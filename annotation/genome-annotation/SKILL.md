@@ -32,6 +32,8 @@ Genome annotation identifies protein-coding sequences (CDS), RNAs, and other gen
 ## Installation
 
 ```bash
+pixi project channel add conda-forge
+pixi project channel add bioconda
 pixi add bakta prokka dfast
 # Bakta database download (one-time)
 bakta_db download -o /path/to/bakta_db

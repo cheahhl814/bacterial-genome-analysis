@@ -35,7 +35,9 @@ Genome polishing is the process of correcting errors (primarily INDELs and SNPs)
 ## Installation
 
 ```bash
-pixi add medaka nanopolish pypolish pypolca bwa-mem2 minimap2 samtools
+pixi project channel add conda-forge
+pixi project channel add bioconda
+pixi add medaka nanopolish polypolish pypolca bwa-mem2 minimap2 samtools
 ```
 
 ## Procedure

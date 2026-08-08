@@ -81,11 +81,17 @@ The agent must stop and warn the user if:
 
 ## Installation & Environment
 
-This meta-skill depends on the tools installed in its sub-skills:
-- **Assembly**: `spades`, `skesa`, `megahit`, `flye`, `raven`, `canu`, `miniasm`, `racon`, `autocycler`, `dragonflye`, `unicycler`, `hybracter`.
-- **Polishing**: `medaka`, `nanopolish`, `pypolish`, `pypolca`, `bwa-mem2`, `minimap2`, `samtools`.
-- **Validation**: `quast`, `checkm`, `busco`, `kraken2`.
-- **Annotation**: `bakta`, `prokka`, `dfast`, `tbl2asn`.
+This meta-skill assumes a Conda-based environment using `pixi` or `conda`. All tools are available on the `conda-forge` and `bioconda` channels.
+
+```bash
+# Initialize a pixi project (run once)
+pixi init bacterial-genome-analysis-env
+cd bacterial-genome-analysis-env
+
+# Add the required channels
+pixi project channel add conda-forge
+pixi project channel add bioconda
+```
 
 ## Verification
 

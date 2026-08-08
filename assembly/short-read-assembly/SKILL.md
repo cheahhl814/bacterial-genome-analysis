@@ -27,6 +27,8 @@ Assemble bacterial genomes from short-read sequencing data. Since short reads ca
 ## Installation
 
 ```bash
+pixi project channel add conda-forge
+pixi project channel add bioconda
 pixi add spades skesa megahit kraken2
 ```
 

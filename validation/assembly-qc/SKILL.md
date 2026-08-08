@@ -33,7 +33,9 @@ Assembly quality control (QC) prevents the use of fragmented or contaminated gen
 ## Installation
 
 ```bash
-pixi add quast checkm busco kraken2
+pixi project channel add conda-forge
+pixi project channel add bioconda
+pixi add quast checkm-genome busco kraken2
 ```
 
 ## Procedure

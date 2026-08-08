@@ -30,6 +30,8 @@ Assemble bacterial genomes using both short (Illumina) and long (ONT/PacBio) rea
 ## Installation
 
 ```bash
+pixi project channel add conda-forge
+pixi project channel add bioconda
 pixi add unicycler dragonflye spades flye medaka pypolish pypolca
 ```
 

@@ -34,6 +34,8 @@ Assemble bacterial genomes from long-read sequencing data. This skill moves beyo
 ## Installation
 
 ```bash
+pixi project channel add conda-forge
+pixi project channel add bioconda
 pixi add flye raven canu miniasm racon autocycler dragonflye
 ```
 

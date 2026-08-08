@@ -1,0 +1,51 @@
+[project]
+name = "bacterial-genome-analysis"
+version = "3.0.0"
+description = "Meta-skill orchestrating bacterial genome assembly, polishing, validation, and annotation."
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+# Assembly Tools
+spades = "*"
+skesa = "*"
+megahit = "*"
+flye = "*"
+raven = "*"
+canu = "*"
+miniasm = "*"
+racon = "*"
+autocycler = "*"
+dragonflye = "*"
+unicycler = "*"
+hybracter = "*"
+
+# Polishing Tools
+medaka = "*"
+nanopolish = "*"
+polypolish = "*"
+pypolca = "*"
+bwa-mem2 = "*"
+minimap2 = "*"
+samtools = "*"
+
+# Validation Tools
+quast = "*"
+checkm-genome = "*"
+busco = "*"
+kraken2 = "*"
+
+# Annotation Tools
+bakta = "*"
+prokka = "*"
+dfast = "*"
+tbl2asn = "*"
+
+[tasks]
+# Common workflows as pixi tasks
+assembly-short = "echo 'Starting short-read assembly workflow...'"
+assembly-long = "echo 'Starting long-read assembly workflow...'"
+assembly-hybrid = "echo 'Starting hybrid assembly workflow...'"
+polish = "echo 'Starting genome polishing workflow...'"
+validate = "echo 'Starting assembly validation workflow...'"
+annotate = "echo 'Starting genome annotation workflow...'"
