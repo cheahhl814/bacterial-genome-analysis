@@ -1,7 +1,7 @@
 ---
 name: long-read-assembly
 description: Assemble bacterial genomes from long-read sequencing data (ONT/PacBio). This skill implements the consensus assembly paradigm to resolve repeats and produce near-complete circular chromosomes and plasmids, integrating quality filtering and depth downsampling.
-version: 2
+version: 3
 updated: "2026-08-09"
 triggers:
   - "assemble long reads"
@@ -26,45 +26,20 @@ Assemble bacterial genomes from long-read sequencing data. This skill moves beyo
 ## Prerequisites
 
 - **Environment**: Active environment with required tools.
-- **Upstream Evidence**: Long reads (`.fastq.gz`).
-- **Required Tools**:
-  - **QC**: `NanoPlot`, `PycoQC` (Sequencing summary stats).
-  - **Trimming/Filtering**: `Filtlong` (Quality filtering), `PoreChop` (Adapter trimming).
-  - **Downsampling**: `Rasusa` (Target coverage downsampling).
+- **Upstream Evidence**: Cleaned long reads (`.fastq.gz`) produced by the `read-qc-trimming` skill.
+- **Required Tools**: 
   - **Assembly**: `Flye`, `Raven`, `Canu`, `Miniasm` + `Racon`.
   - **Consensus**: `Autocycler`, `Dragonflye`.
 
 ## Installation
 
 ```bash
-pixi add nanoplot pycoqc filtlong porechop rasusa \
-          flye raven canu miniasm racon autocycler dragonflye
+pixi add flye raven canu miniasm racon autocycler dragonflye
 ```
 
 ## Procedure
 
-### 1. Upstream Quality Control (The Pre-Filter)
-Long reads must be filtered before assembly to remove adapters and poor-quality sequences.
-
-#### A. Quality Filtering (Filtlong)
-```bash
-filtlong --min_length 1000 --keep_percent 95 \
-         --target_bases 500000000 \
-         input_reads.fastq.gz | gzip > filtered_reads.fastq.gz
-```
-*Tip: Adjust `--target_bases` to the expected genome size $\times$ coverage.*
-
-#### B. Adapter Trimming (PoreChop)
-```bash
-porechop -i input_reads.fastq.gz -o trimmed_reads.fastq.gz
-```
-
-#### C. QC Reporting
-```bash
-nanoplot --fastq filtered_reads.fastq.gz --outdir nanoplot_output/ -t 8
-```
-
-### 2. Primary Assembly (The Draft)
+### 1. Primary Assembly (The Draft)
 The agent selects an assembler based on data type and memory constraints.
 
 | Read Type | Recommended Tool | Notes |
@@ -77,14 +52,14 @@ The agent selects an assembler based on data type and memory constraints.
 
 **Example (Flye):**
 ```bash
-flye --nano-raw filtered_reads.fastq.gz \
+flye --nano-raw cleaned_reads.fastq.gz \
      --out-dir flye_output/ \
      --threads 8 \
      --genome-size 3m
 # Result: flye_output/assembly.fasta
 ```
 
-### 3. Consensus Assembly (The Refinement)
+### 2. Consensus Assembly (The Refinement)
 
 To avoid the "single-assembler bias" and structural errors, the agent MUST use a consensus tool.
 
@@ -93,7 +68,7 @@ To avoid the "single-assembler bias" and structural errors, the agent MUST use a
 
 ```bash
 # Subsample reads (Autocycler requires multiple subsets)
-autocycler subsample --reads filtered_reads.fastq.gz --out_dir autocycler_out/
+autocycler subsample --reads cleaned_reads.fastq.gz --out_dir autocycler_out/
 
 # Run multiple primary assemblies (e.g., Flye, Raven, Miniasm+Racon)
 # Then combine into a consensus:
@@ -105,7 +80,7 @@ autocycler resolve --inputs combined_out/ --out_dir resolved_out/
 #### Path B: Dragonflye (Automated Wrappers)
 `Dragonflye` is an automated wrapper for long-read assembly using Flye + Medaka + Polypolish/Pypolca.
 ```bash
-dragonflye --reads filtered_reads.fastq.gz --outdir dragonflye_out/ \
+dragonflye --reads cleaned_reads.fastq.gz --outdir dragonflye_out/ \
            --assembler flye --polish-rounds 3
 ```
 
@@ -117,7 +92,6 @@ dragonflye --reads filtered_reads.fastq.gz --outdir dragonflye_out/ \
 
 ## Verification
 
-- [ ] Filtered reads (e.g., Filtlong) exist.
 - [ ] Primary assembly (Flye/Raven) exists.
 - [ ] Consensus assembly (`Autocycler` or `Dragonflye`) exists.
 - [ ] The agent has verified that circularization was attempted.

@@ -1,7 +1,7 @@
 ---
 name: hybrid-assembly
 description: Combine short and long reads to assemble high-fidelity, complete bacterial genomes. This skill implements both Unicycler (short-read first) and Dragonflye (long-read first) strategies to resolve repeats and close gaps.
-version: 2
+version: 3
 updated: "2026-08-09"
 triggers:
   - "hybrid assembly"
@@ -22,11 +22,9 @@ Assemble bacterial genomes using both short (Illumina) and long (ONT/PacBio) rea
 
 - **Environment**: Active environment with required tools.
 - **Upstream Evidence**: 
-  - Cleaned short reads (`.fastq.gz`).
-  - Cleaned long reads (`.fastq.gz`).
+  - Cleaned short reads (`.fastq.gz`) produced by the `read-qc-trimming` skill.
+  - Cleaned long reads (`.fastq.gz`) produced by the `read-qc-trimming` skill.
 - **Required Tools**:
-  - **Short-read QC**: `FastQC`, `FastP`.
-  - **Long-read QC**: `NanoPlot`, `Filtlong`.
   - **Assembly**: `Unicycler` (Short-read first), `Dragonflye` (Long-read first).
 
 ## Installation

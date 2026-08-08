@@ -1,7 +1,7 @@
 ---
 name: short-read-assembly
 description: Assemble bacterial genomes from short-read sequencing data (Illumina). This skill focuses on producing the most contiguous draft possible from paired-end reads, utilizing De Bruijn graph assemblers and integrating quality control to ensure data integrity before assembly.
-version: 2
+version: 3
 updated: "2026-08-09"
 triggers:
   - "assemble short reads"
@@ -22,16 +22,12 @@ Assemble bacterial genomes from short-read sequencing data. Since short reads ca
 ## Prerequisites
 
 - **Environment**: Active environment with required tools.
-- **Upstream Evidence**: Cleaned reads (`.fastq.gz`) from a read-trimming-cleaning skill.
-- **Required Tools**: 
-  - **QC**: `FastQC`, `FastP` (for trimming and QC reporting).
-  - **Assembly**: `SPAdes`, `SKESA`, or `MEGAHIT`.
-  - **Contamination Check**: `Kraken2` (Taxonomic classification).
+- **Upstream Evidence**: Cleaned reads (`.fastq.gz`) produced by the `read-qc-trimming` skill.
 
 ## Installation
 
 ```bash
-pixi add fastqc fastp spades skesa megahit kraken2
+pixi add spades skesa megahit kraken2
 ```
 
 ## Procedure
@@ -92,4 +88,3 @@ kraken2 --db /path/to/kraken2_db --threads 8 \
 - [ ] `scaffolds.fasta` or `assembly.fasta` exists.
 - [ ] The total assembly length is approximately equal to the expected genome size of the species.
 - [ ] `Kraken2` report confirms the sample matches the expected organism.
-- [ ] MultiQC report generated for FastP and FastQC metrics.

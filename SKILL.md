@@ -1,7 +1,7 @@
 ---
 name: bacterial-genome-analysis
 description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates QC, assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm.
-version: 2
+version: 3
 updated: "2026-08-09"
 triggers:
   - "assemble bacterial genome"
@@ -20,16 +20,10 @@ This meta-skill orchestrates the full bacterial genome reconstruction pipeline. 
 
 ## Pipeline Architecture
 
-The analysis is divided into five sequential phases. The agent MUST complete each phase in order and pass the associated "Go/No-Go" gate.
+The analysis is divided into four sequential phases, building upon upstream read quality control and trimming. The agent MUST complete each phase in order and pass the associated "Go/No-Go" gate.
 
-### Phase 1: Read Quality Control (The Filter)
-**Goal**: Ensure that the input reads are of high quality and free from contamination before assembly.
-- **Short-Read QC**: `FastQC` + `FastP`.
-- **Long-Read QC**: `NanoPlot` / `PycoQC` + `Filtlong` / `PoreChop` + `Rasusa` (Downsampling).
-- **Exit Gate**: Cleaned reads (`.fastq.gz`) and QC reports exist.
-
-### Phase 2: Assembly (The Draft)
-**Goal**: Generate the initial contig set from raw reads.
+### Phase 1: Assembly (The Draft)
+**Goal**: Generate the initial contig set from cleaned reads.
 - **Path Selection**:
   - **Short-Read Only**: $\rightarrow$ `assembly/short-read-assembly`
   - **Long-Read Only**: $\rightarrow$ `assembly/long-read-assembly`
@@ -37,7 +31,7 @@ The analysis is divided into five sequential phases. The agent MUST complete eac
 - **Must-Verify**: Correct assembler selection based on read length and technology.
 - **Exit Gate**: A draft assembly (`.fasta`) exists.
 
-### Phase 3: Polishing (The Correction)
+### Phase 2: Polishing (The Correction)
 **Goal**: Correct base-level errors (especially INDELs) to achieve "perfect" accuracy.
 - **Skill**: `polishing/genome-polishing`
 - **Sequential Logic**:
@@ -46,7 +40,7 @@ The analysis is divided into five sequential phases. The agent MUST complete eac
 - **Must-Verify**: Polishing is applied in the correct order (Long $\rightarrow$ Short).
 - **Exit Gate**: A polished assembly (`.fasta`) exists.
 
-### Phase 4: Validation (The Quality Gate)
+### Phase 3: Validation (The Quality Gate)
 **Goal**: Quantify contiguity, completeness, and contamination.
 - **Skill**: `validation/assembly-qc`
 - **Critical Tools**: 
@@ -59,7 +53,7 @@ The analysis is divided into five sequential phases. The agent MUST complete eac
   - **Contamination**: $< 5\%$.
 - **Action**: If criteria are not met, the agent must return to Phase 1 or 2 to optimize assembly/polishing.
 
-### Phase 5: Annotation (The Labeling)
+### Phase 4: Annotation (The Labeling)
 **Goal**: Identify and label biological features.
 - **Skill**: `annotation/genome-annotation`
 - **Tool Selection**:
@@ -73,11 +67,10 @@ The analysis is divided into five sequential phases. The agent MUST complete eac
 
 ### 1. The Evidence Chain
 The agent shall maintain a "Genomic State" log:
-- **State 1**: Raw reads $\rightarrow$ Cleaned reads + QC report.
-- **State 2**: Cleaned reads $\rightarrow$ Draft Assembly.
-- **State 3**: Draft Assembly $\rightarrow$ Polished Assembly.
-- **State 4**: Polished Assembly $\rightarrow$ QC Metrics (CheckM/QUAST/Kraken2).
-- **State 5**: QC Passed $\rightarrow$ Annotated Genome.
+- **State 1**: Cleaned reads $\rightarrow$ Draft Assembly.
+- **State 2**: Draft Assembly $\rightarrow$ Polished Assembly.
+- **State 3**: Polished Assembly $\rightarrow$ QC Metrics (CheckM/QUAST/Kraken2).
+- **State 4**: QC Passed $\rightarrow$ Annotated Genome.
 
 ### 2. Go/No-Go Gates
 The agent must stop and warn the user if:
@@ -89,7 +82,6 @@ The agent must stop and warn the user if:
 ## Installation & Environment
 
 This meta-skill depends on the tools installed in its sub-skills:
-- **QC**: `fastqc`, `fastp`, `nanoplot`, `pycoqc`, `filtlong`, `porechop`, `rasusa`.
 - **Assembly**: `spades`, `skesa`, `megahit`, `flye`, `raven`, `canu`, `miniasm`, `racon`, `autocycler`, `dragonflye`, `unicycler`, `hybracter`.
 - **Polishing**: `medaka`, `nanopolish`, `pypolish`, `pypolca`, `bwa-mem2`, `minimap2`, `samtools`.
 - **Validation**: `quast`, `checkm`, `busco`, `kraken2`.
@@ -97,7 +89,7 @@ This meta-skill depends on the tools installed in its sub-skills:
 
 ## Verification
 
-- [ ] All five phases completed in sequence.
+- [ ] All four phases completed in sequence.
 - [ ] Polishing sequence followed: Long $\rightarrow$ Short.
 - [ ] CheckM completeness $> 95\%$ and contamination $< 5\%$.
 - [ ] Kraken2 confirms sample purity.
