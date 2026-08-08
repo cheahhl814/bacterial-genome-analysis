@@ -1,7 +1,7 @@
 ---
 name: assembly-qc
 description: Quantify the quality, completeness, and contamination of a bacterial genome assembly. This skill ensures that an assembly is "finished" enough for downstream annotation and comparative genomics using CheckM, QUAST, BUSCO, and Kraken2.
-version: 2
+version: 4
 updated: "2026-08-09"
 triggers:
   - "validate assembly"
@@ -16,9 +16,37 @@ triggers:
 
 # Skill: assembly-qc
 
+## Audience
+
+This skill serves two purposes:
+- **AI Agents**: Triggered by phrases like *"validate assembly"* or *"check assembly quality"*. Must execute all four QC steps and apply the Go/No-Go gates.
+- **Human Users**: Provides conceptual background, decision rationale, and troubleshooting guidance.
+
+## When to Use This Skill
+
+Use this skill if:
+- You have a **polished or unpolished** assembly that needs validation.
+- You want to determine if the assembly meets **MIMAG high-quality standards** ($>95\%$ completeness, $<5\%$ contamination).
+- You suspect **contamination** or **fragmentation** in your assembly.
+- You need to compare multiple assemblies (e.g., from different assemblers).
+
+Do NOT use this skill if:
+- You only have raw reads (use a read QC skill first).
+- You are working with metagenomic data (different QC paradigms apply; use MetaQUAST and MAG-specific tools).
+
 ## Description
 
 Assembly quality control (QC) prevents the use of fragmented or contaminated genomes in downstream analysis. This skill transforms a FASTA assembly into a set of quantitative metrics (Completeness, Contamination, Contiguity).
+
+## Conceptual Background
+
+**The Three Pillars of Assembly Quality:**
+
+1. **Contiguity** (QUAST): Is the assembly in few, long contigs? Measured by N50, L50, and total contig count.
+2. **Completeness** (CheckM, BUSCO): Does the assembly contain all expected genes? Measured by the presence of lineage-specific single-copy markers.
+3. **Contamination** (Kraken2): Does the assembly contain sequences from other organisms? Measured by taxonomic classification of contigs.
+
+**Why are these metrics important?** An assembly with low completeness will miss real genes, leading to false-negative annotations. An assembly with high contamination will produce false-positive annotations from other organisms.
 
 ## Prerequisites
 
@@ -108,6 +136,16 @@ kraken2 --db /path/to/kraken2_db \
 | **High Contamination** | Mixed culture or assembly artifacts. | Use `Kraken2` to identify contaminating contigs; filter. |
 | **Low N50 / Many Contigs** | Fragmented assembly. | Try hybrid assembly or use `Autocycler` for consensus. |
 | **High Missing BUSCOs** | Incomplete capture of conserved genes. | Check sequencing depth; consider repeat resolution tools. |
+
+## Troubleshooting
+
+| Symptom                                          | Likely Cause                                                   | Recommended Action                                                            |
+|:------------------------------------------------ |:-------------------------------------------------------------- |:----------------------------------------------------------------------------- |
+| **CheckM fails to place assembly in a lineage**   | Novel organism or highly contaminated assembly.                | Use `--reduced_tree` flag; manually specify lineage with `--taxon_list`.       |
+| **CheckM reports very high contamination ($>10\%$)** | Multiple organisms in the assembly.                          | Identify and remove contaminating contigs using `Kraken2`.                     |
+| **BUSCO database download fails**                 | Network issues or server unavailability.                       | Retry; use `busco --download_path` to specify a local mirror.                  |
+| **QUAST reports very high misassembly count**     | Repetitive genome or incorrect assembler parameters.           | Try a different assembler; verify with read mapping.                            |
+| **Kraken2 database too large to download**        | Limited disk space.                                            | Use a smaller database (e.g., `minikraken2`); use `centrifuge` as alternative.|
 
 ## Verification
 

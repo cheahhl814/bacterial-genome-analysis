@@ -1,7 +1,7 @@
 ---
 name: hybrid-assembly
 description: Combine short and long reads to assemble high-fidelity, complete bacterial genomes. This skill implements both Unicycler (short-read first) and Dragonflye (long-read first) strategies to resolve repeats and close gaps.
-version: 3
+version: 4
 updated: "2026-08-09"
 triggers:
   - "hybrid assembly"
@@ -14,9 +14,36 @@ triggers:
 
 # Skill: hybrid-assembly
 
+## Audience
+
+This skill serves two purposes:
+- **AI Agents**: Triggered by phrases like *"hybrid assembly"* or *"combine short and long reads"*. Must execute the strategy selection and verification steps below.
+- **Human Users**: Provides conceptual background, decision rationale, and troubleshooting guidance.
+
+## When to Use This Skill
+
+Use this skill if:
+- You have **both short and long reads** (e.g., Illumina + ONT).
+- You need the **highest possible accuracy** (uses both data types).
+- You want to resolve **complex repeats** and close gaps.
+- You are preparing a genome for **NCBI submission** (requires high-quality, closed assemblies).
+
+Do NOT use this skill if:
+- You only have one read type (use `short-read-assembly` or `long-read-assembly` instead).
+
 ## Description
 
 Assemble bacterial genomes using both short (Illumina) and long (ONT/PacBio) reads. This is the gold standard for producing "closed" genomes where chromosomes and plasmids are fully resolved without gaps. The `nf-core/bacass` pipeline supports two primary paradigms: Unicycler and Dragonflye.
+
+## Conceptual Background
+
+Hybrid assembly combines the strengths of both technologies:
+- **Short reads**: High base-level accuracy ($Q30+$, $>99.9\%$ accuracy).
+- **Long reads**: Long-range structural information (spans repeats).
+
+**The Two Paradigms:**
+1. **Short-Read First (Unicycler)**: Build a high-quality short-read assembly graph, then use long reads to scaffold and close gaps.
+2. **Long-Read First (Dragonflye)**: Build a long-read assembly, then use short reads to correct base-level errors (polishing).
 
 ## Prerequisites
 
@@ -39,11 +66,11 @@ pixi add unicycler dragonflye spades flye medaka pypolish pypolca
 
 ### 1. Strategy Selection
 
-| Paradigm | Recommended Tool | Strategy | Pros | Cons |
-| :--- | :--- | :--- | :--- | :--- |
-| **Short-Read First** | `Unicycler` | SPAdes assembly $\rightarrow$ Scaffold with long reads. | Excellent for low-coverage long reads. | Slower; depends on short-read depth. |
-| **Long-Read First** | `Dragonflye` | Flye assembly $\rightarrow$ Polishing with short reads. | Highly accurate; resolves complex repeats. | Requires high-quality long reads. |
-| **Automated / Modern** | `Hybracter` | Long-read first $\rightarrow$ Automated polishing. | Scalable; updated for modern tools. | Newer ecosystem. |
+| Paradigm             | Recommended Tool | Why This Tool?                                                                                                                                  |
+|:-------------------- |:---------------- |:------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Short-Read First** | `Unicycler`      | Excellent for low-coverage long reads. Uses SPAdes to build a high-quality short-read graph, then bridges contigs with long reads.              |
+| **Long-Read First**  | `Dragonflye`     | Highly accurate for high-quality long reads. Uses Flye to build a long-read assembly, then polishes with short reads (Pypolish/Pypolca).        |
+| **Automated / Modern** | `Hybracter`    | Scalable and updated for modern tools. Implements a long-read-first approach with automated polishing.                                          |
 
 ### 2. Execution
 
@@ -77,6 +104,15 @@ dragonflye --reads long_reads.fastq.gz \
 - **Closure**: Check for circular contigs. Unicycler and Dragonflye both attempt to circularize the genome.
 - **Consistency**: Ensure the total genome size matches the expected size for the organism.
 - **Plasmids**: Pay special attention to plasmid reconstruction. Unicycler excels at separating plasmids with similar sequences.
+
+## Troubleshooting
+
+| Symptom                                                | Likely Cause                                                       | Recommended Action                                                       |
+|:------------------------------------------------------ |:------------------------------------------------------------------ |:------------------------------------------------------------------------ |
+| **Unicycler runs very slowly**                          | Low short-read coverage or excessive read count.                    | Subsample short reads to $50\times$ coverage; reduce thread count if memory-bound. |
+| **Plasmids not circularized**                          | Insufficient long-read coverage of plasmid; plasmid loss.           | Increase long-read depth; check for coverage uniformity.                 |
+| **Dragonflye produces fragmented assembly**             | Poor-quality long reads or insufficient coverage.                  | Use `Filtlong` to filter low-quality reads; increase sequencing depth.    |
+| **Misassemblies at repeat boundaries**                  | Long-read errors or incorrect assembler parameters.                | Try the alternative paradigm (Unicycler vs. Dragonflye); increase coverage. |
 
 ## Verification
 

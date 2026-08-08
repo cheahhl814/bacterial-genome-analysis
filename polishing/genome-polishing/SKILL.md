@@ -1,7 +1,7 @@
 ---
 name: genome-polishing
 description: Correct base-level errors in bacterial genome assemblies. This skill implements a multi-stage polishing sequence: long-read polishing (Medaka/NanoPolish) followed by short-read polishing (Pypolish/Pypolca) to achieve "perfect" nucleotide accuracy.
-version: 2
+version: 4
 updated: "2026-08-09"
 triggers:
   - "polish genome"
@@ -16,9 +16,37 @@ triggers:
 
 # Skill: genome-polishing
 
+## Audience
+
+This skill serves two purposes:
+- **AI Agents**: Triggered by phrases like *"polish genome"* or *"correct assembly errors"*. Must execute the long-read $\rightarrow$ short-read polishing sequence.
+- **Human Users**: Provides conceptual background, decision rationale, and troubleshooting guidance.
+
+## When to Use This Skill
+
+Use this skill if:
+- You have a **long-read** or **hybrid** assembly that needs base-level correction.
+- You need to achieve **"perfect" accuracy** ($>99.99\%$) for publication or submission.
+- You observe **high INDEL rates** when mapping reads back to the assembly.
+
+Do NOT use this skill if:
+- You have a **short-read-only** assembly (polishing offers minimal benefit).
+- Your assembly is from **PacBio HiFi** data (already $>99.9\%$ accurate; polishing is optional).
+
 ## Description
 
 Genome polishing is the process of correcting errors (primarily INDELs and SNPs) in a draft assembly. This skill is mandatory for long-read and hybrid assemblies to reach "perfect" accuracy. It follows a strict sequence: **Long-read polishing $\rightarrow$ Short-read polishing**.
+
+## Conceptual Background
+
+**Why is polishing necessary?**
+- Long reads (ONT) have a per-base error rate of $\approx 1\text{-}5\%$, dominated by INDELs in homopolymer regions.
+- Even after consensus assembly (e.g., Autocycler), a small number of errors remain.
+- These errors cause **frame-shifts** in genes, leading to incorrect annotation.
+
+**The Two-Stage Paradigm:**
+1. **Long-read polishing**: Uses the same long reads to correct large-scale errors. Coarse but structurally aware.
+2. **Short-read polishing**: Uses highly accurate short reads ($Q30+$) to fix the remaining fine-scale errors.
 
 ## Prerequisites
 
@@ -105,6 +133,16 @@ pypolca run -a assembly.fasta -o polished.fasta -r -t 8 mapped.bam
 - **Error Reduction**: Compare the number of INDELs before and after polishing by mapping reads back and checking mismatch rates.
 - **Base-level Accuracy**: Polishing should move the assembly from $\approx 95\text{-}99\%$ accuracy to $> 99.99\%$.
 - **Over-polishing**: Be cautious of removing rare variants. Use Pypolca's `careful` mode or verify against the raw read mapping.
+
+## Troubleshooting
+
+| Symptom                                       | Likely Cause                                                      | Recommended Action                                                          |
+|:--------------------------------------------- |:----------------------------------------------------------------- |:--------------------------------------------------------------------------- |
+| **Medaka fails with memory error**             | Very large genome or excessive coverage.                          | Subsample long reads with `Rasusa` before polishing.                        |
+| **Polishing introduces errors (regressions)**  | Over-polishing or incorrect read mapping.                         | Use `Pypolca --careful`; reduce polishing rounds.                           |
+| **Short-read polishing has no effect**          | Insufficient short-read coverage ($<20\times$).                  | Ensure short-read coverage is $>20\times$; check mapping rates.              |
+| **Long-read polishing fails on R10.4.1 chemistry** | Outdated Medaka model.                                          | Update to the latest Medaka release; specify the correct model manually.     |
+| **NanoPolish requires Fast5 files**             | Newer basecallers output Pod5 instead of Fast5.                   | Convert Pod5 to Fast5, or use `Dorado polish` instead of NanoPolish.        |
 
 ## Verification
 
