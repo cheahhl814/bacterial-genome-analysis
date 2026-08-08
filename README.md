@@ -7,21 +7,25 @@ This meta-skill orchestrates the end-to-end reconstruction of bacterial genomes,
 The analysis follows a strict sequential evidence chain. Moving to a subsequent phase requires passing a "Go/No-Go" quality gate.
 
 1. **Assembly (The Draft)** (`/assembly`)
+   
    - **Input**: Short reads, Long reads, or both (Hybrid).
    - **Output**: Draft FASTA assembly.
    - **Key Tools**: `SPAdes`, `Flye`, `Autocycler`, `Hybracter`.
 
 2. **Polishing (The Correction)** (`/polishing`)
+   
    - **Input**: Draft FASTA + Reads.
    - **Output**: Polished FASTA assembly.
    - **Key Tools**: `Medaka`/`Dorado` (Long-read) $\rightarrow$ `Pypolish`/`Pypolca` (Short-read).
 
 3. **Validation (The Quality Gate)** (`/validation`)
+   
    - **Input**: Polished FASTA.
    - **Output**: QC metrics (Completeness, Contamination).
    - **Key Tools**: `CheckM`, `QUAST`, `BUSCO`.
 
 4. **Annotation (The Labeling)** (`/annotation`)
+   
    - **Input**: Validated FASTA.
    - **Output**: Annotated GFF/GBK files.
    - **Key Tools**: `Bakta` (Recommended), `Prokka`, `PGAP`.
