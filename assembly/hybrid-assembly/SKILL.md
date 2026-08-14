@@ -41,6 +41,10 @@ This sub-skill **refuses to run** unless the upstream artifacts are present.
 | `$RUN_DIR/cleaned_R1.fastq.gz` | `read-qc-trimming` | yes |
 | `$RUN_DIR/cleaned_R2.fastq.gz` | `read-qc-trimming` | yes |
 | `$RUN_DIR/cleaned_long.fastq.gz` | `read-qc-trimming` | yes |
+| `$RUN_DIR/preflight.md` | `preflight/genome-input-preflight` | yes (verdict ≥ GO-WITH-WARNINGS) |
+| `$RUN_DIR/params.json` | `preflight/genome-input-preflight` | yes (platform=hybrid + assembler recommendation) |
+
+If `preflight.md` is missing or overall verdict is `NO-GO`, stop and tell the user: *"Run `preflight/genome-input-preflight` first; this skill refuses to assemble without a preflight verdict ≥ GO-WITH-WARNINGS."*
 
 ### Outputs (produced)
 | Path | Owner | Format | Notes |
@@ -53,6 +57,8 @@ This sub-skill **refuses to run** unless the upstream artifacts are present.
 ## Description
 
 Assemble bacterial genomes using both short (Illumina) and long (ONT/PacBio) reads. This is the gold standard for producing "closed" genomes where chromosomes and plasmids are fully resolved without gaps. The `nf-core/bacass` pipeline supports two primary paradigms: Unicycler and Dragonflye.
+
+> **Preflight guard.** Before running any assembly command, verify `preflight.md` overall verdict ≥ `GO-WITH-WARNINGS` and `params.json` indicates both short AND long read data (`$has_short = true` and `$has_long = true`). If `params.json` recommends a specific assembler (e.g. `unicycler` for low-coverage long reads, `dragonflye` for high-quality long reads, `hybracter` for automated modern), use that — the preflight evidence supports the choice.
 
 ## Conceptual Background
 

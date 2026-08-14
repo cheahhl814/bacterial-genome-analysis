@@ -1,6 +1,6 @@
 # Bacterial Genome Analysis Skills
 
-> **v5.** Restructured as a thin orchestrator + four specialists, modeled on the [BettaMt-agents](https://github.com/cheahhl814/BettaMt-agents) pattern: every sub-skill has an explicit input/output contract, a single responsibility, and a hand-off to the next phase. Pipeline architecture (the 4-phase evidence chain) is unchanged from v4 — only the *structure* of the skill changed.
+> **v5.0.1.** Added a new `preflight` sub-skill (Phase 0) that gates the assembly phase on a `GO` / `GO-WITH-WARNINGS` / `NO-GO` verdict. v5 structure (orchestrator + 4 specialists) is unchanged. Pattern matches `bettamt-preflight` from [BettaMt-agents](https://github.com/cheahhl814/BettaMt-agents).
 
 This meta-skill orchestrates the end-to-end reconstruction of bacterial genomes, transforming cleaned sequencing reads into a validated, polished, and annotated genomic sequence. It implements the **"Finished Genome"** paradigm, ensuring that assembly errors are corrected before biological features are labeled.
 
@@ -8,14 +8,15 @@ This meta-skill orchestrates the end-to-end reconstruction of bacterial genomes,
 
 ## Pipeline Overview
 
-The analysis follows a strict **4-phase evidence chain** (building upon upstream read QC, covered by the separate [`read-qc-trimming`](https://github.com/cheahhl814/read-qc-trimming) skill). Moving to a subsequent phase requires passing a "Go/No-Go" quality gate AND emitting the artifact the next phase expects.
+The analysis follows a strict **5-phase evidence chain** (building upon upstream read QC, covered by the separate [`read-qc-trimming`](https://github.com/cheahhl814/read-qc-trimming) skill). Moving to a subsequent phase requires passing a "Go/No-Go" quality gate AND emitting the artifact the next phase expects.
 
-| # | Phase | Goal | Key Tools | Sub-Skill | Artifact produced |
-|:---|:---|:---|:---|:---|:---|
-| **1** | **Assembly** (The Draft) | Generate initial contigs from cleaned reads. | `SPAdes`, `Flye`, `Unicycler`, `Hybracter`, `Autocycler`, `Dragonflye`, `MEGAHIT`, `Canu`, `Raven`, `Miniasm`+`Racon` | `/assembly` | `$RUN_DIR/draft.fasta` |
-| **2** | **Polishing** (The Correction) | Correct base-level errors (INDELs, SNPs). | `Medaka`/`NanoPolish` (Long) $\rightarrow$ `Pypolish`/`Pypolca` (Short) | `/polishing` | `$RUN_DIR/assembly.fasta` |
-| **3** | **Validation** (The Quality Gate) | Quantify contiguity, completeness, contamination. | `CheckM` ($>95\%$ C, $<5\%$ X), `QUAST`, `BUSCO`, `Kraken2` | `/validation` | `$RUN_DIR/report.md` |
-| **4** | **Annotation** (The Labeling) | Identify and label biological features. | `Bakta` (Recommended), `Prokka`, `DFAST`, `PGAP` | `/annotation` | `$RUN_DIR/bakta_output/<prefix>.{gff3,gbff,faa,fna}` |
+| # | Phase | Goal | Sub-Skill | Artifact produced |
+|:---|:---|:---|:---|:---|
+| **0** | **Preflight** (The Audit) | Validate inputs, compute evidence, write `params.json` + `preflight.md`. | `/preflight` | `$RUN_DIR/preflight.md` + `$RUN_DIR/params.json` |
+| **1** | **Assembly** (The Draft) | Generate initial contigs from cleaned reads. | `/assembly` | `$RUN_DIR/draft.fasta` |
+| **2** | **Polishing** (The Correction) | Correct base-level errors (INDELs, SNPs). | `/polishing` | `$RUN_DIR/assembly.fasta` |
+| **3** | **Validation** (The Quality Gate) | Quantify contiguity, completeness, contamination. | `/validation` | `$RUN_DIR/report.md` |
+| **4** | **Annotation** (The Labeling) | Identify and label biological features. | `/annotation` | `$RUN_DIR/bakta_output/<prefix>.{gff3,gbff,faa,fna}` |
 
 ### Phase Selection Logic
 
@@ -25,7 +26,16 @@ The analysis follows a strict **4-phase evidence chain** (building upon upstream
 
 ## v5 design — what changed
 
-| Change | v4 (old) | v5 (new) |
+### v5.0.1 (current)
+
+- New **Phase 0 Preflight** sub-skill at `preflight/genome-input-preflight/` — runs `seqkit stats`, `minimap2` downsampled coverage, `kraken2` read-level screen, disk / resource checks, and tool availability. Writes `params.json` (machine contract) and `preflight.md` (audit trail) with overall verdict `GO` / `GO-WITH-WARNINGS` / `NO-GO`.
+- The **three assembly sub-skills refuse to run** without `preflight.md` ≥ `GO-WITH-WARNINGS`.
+- Orchestrator stage detection ladder now triggers `preflight` when cleaned reads exist but `preflight.md` is missing.
+- Handoff contract table now includes `preflight → assembly` (params.json + preflight.md).
+
+### v5.0.0 (initial restructure)
+
+| Change | v4 (old) | v5.0.0 (new) |
 | --- | --- | --- |
 | Orchestrator | None — master SKILL.md was a wall of phases | §0 orchestrator: detects stage from filesystem evidence and routes to the right sub-skill |
 | Handoff contract | Prose ("prerequisites: cleaned reads...") | Tabular §B in master + §0 Inputs/Outputs contract in every sub-skill |
@@ -35,7 +45,7 @@ The analysis follows a strict **4-phase evidence chain** (building upon upstream
 | Disk check | Missing | §F.2 in master + every sub-skill respects `$RUN_DIR` env var |
 | Skip polish shortcut | Implicit | Master explicitly distinguishes "always polish (long-read)" vs "optional polish (short-read)" |
 
-### What did NOT change
+### What did NOT change (since v4)
 
 - **The 4-phase pipeline architecture** itself (Assembly $\rightarrow$ Polishing $\rightarrow$ Validation $\rightarrow$ Annotation) — still grounded in `nf-core/bacass`.
 - **The Go/No-Go gate logic** — 90/10 warning + 95/5 strict MIMAG.
@@ -126,6 +136,8 @@ bacterial-genome-analysis/
 ├── SKILL.md                              # Master orchestrator (§0 stage detection, §B handoff contract, glossary)
 ├── README.md                              # This file (Public overview)
 ├── pixi.toml                              # Conda/pixi environment declaration (29 tools)
+├── preflight/
+│   └── genome-input-preflight/SKILL.md  # Phase 0: validate inputs, compute evidence, write params.json + preflight.md
 ├── assembly/
 │   ├── short-read-assembly/SKILL.md     # De Bruijn Graph paradigm; SPAdes/SKESA/MEGAHIT
 │   ├── long-read-assembly/SKILL.md      # OLC paradigm; Flye/Autocycler/Dragonflye

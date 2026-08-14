@@ -1,7 +1,7 @@
 ---
 name: bacterial-genome-analysis
-description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill.
-version: 5
+description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill.
+version: 5.0.1
 updated: "2026-08-14"
 triggers:
   - "assemble bacterial genome"
@@ -16,28 +16,30 @@ triggers:
 
 # Meta-Skill: bacterial-genome-analysis
 
-> **v5 redesign.** This skill is now a thin orchestrator plus four specialists. It follows the agentic skill pattern documented at `agentskills.io/specification`: every sub-skill has an explicit input/output contract, a single responsibility, and a hand-off to the next phase. The pipeline architecture is unchanged from v4 — only the *structure* of the skill changed.
+> **v5.0.1 redesign.** This skill is now a thin orchestrator plus five specialists (preflight + four phases). It follows the agentic skill pattern documented at `agentskills.io/specification` and the `BettaMt-agents` reference layout: every sub-skill has an explicit input/output contract, a single responsibility, and a hand-off to the next phase. The pipeline architecture gained a **Phase 0 Preflight** gate in v5.0.1 — assembly sub-skills refuse to run without `preflight.md` ≥ GO-WITH-WARNINGS.
 
 ## Audience
 
 This meta-skill is designed to serve **two simultaneous audiences**:
 
-1.  **AI Coding Agents**: Triggered by the phrases above. The agent must execute the strict evidence chain, run the Go/No-Go gates, and write the `report.md` / `annotation-report.md` artifacts the sub-skills specify.
-2.  **Human Users (Bioinformaticians & Biologists)**: Read this document as a workflow guide. The sections explain *why* each phase exists and *what* trade-offs apply at each decision point.
+1. **AI Coding Agents**: Triggered by the phrases above. The agent must execute the strict evidence chain, run the Go/No-Go gates, and write the `report.md` / `annotation-report.md` artifacts the sub-skills specify.
+2. **Human Users (Bioinformaticians & Biologists)**: Read this document as a workflow guide. The sections explain *why* each phase exists and *what* trade-offs apply at each decision point.
 
 ## When to Use This Skill
 
 Use this meta-skill when you need to:
--   Reconstruct a bacterial genome **de novo** (without a reference genome).
--   Achieve a **complete, closed** genome (single contig per replicon).
--   Compare genomes or study population genetics (requires high-quality assemblies).
--   Submit a genome to a public repository like NCBI (requires annotation).
--   Identify antimicrobial resistance (AMR) genes, virulence factors, or metabolic pathways.
+
+- Reconstruct a bacterial genome **de novo** (without a reference genome).
+- Achieve a **complete, closed** genome (single contig per replicon).
+- Compare genomes or study population genetics (requires high-quality assemblies).
+- Submit a genome to a public repository like NCBI (requires annotation).
+- Identify antimicrobial resistance (AMR) genes, virulence factors, or metabolic pathways.
 
 **Do NOT use this skill** if:
--   You have a well-characterized reference genome (use a reference-based variant calling pipeline instead).
--   You are analyzing eukaryotic, viral, or metagenomic data (different paradigms apply).
--   You only need raw read statistics or read trimming (use the `read-qc-trimming` skill first; this meta-skill expects **cleaned reads** as input).
+
+- You have a well-characterized reference genome (use a reference-based variant calling pipeline instead).
+- You are analyzing eukaryotic, viral, or metagenomic data (different paradigms apply).
+- You only need raw read statistics or read trimming (use the `read-qc-trimming` skill first; this meta-skill expects **cleaned reads** as input).
 
 ## 0. Orchestrator — detect stage, route to the right skill
 
@@ -56,14 +58,15 @@ Try to detect automatically **before** asking:
 test -f "$RUN_DIR/annotation-report.md" && STAGE="annotate-qc-done"
 test -f "$RUN_DIR/assembly.fasta"        && STAGE="qc"            # polished FASTA exists → run succeeded, time for QC
 test -f "$RUN_DIR/diagnosis.md"          && STAGE="review-diagnosis"
-test -f "$RUN_DIR/params.json"           && STAGE="assembly"      # inputs ready → pick assembly path
-test -f "$RUN_DIR/cleaned_R1.fastq.gz"   && STAGE="preflight"
+test -f "$RUN_DIR/preflight.md"          && STAGE="assembly"      # preflight done → pick assembly path
+test -f "$RUN_DIR/cleaned_R1.fastq.gz"   && STAGE="preflight"     # cleaned reads exist → run preflight sub-skill
 : "${STAGE:=preflight}"
 ```
 
 If auto-detection is ambiguous, ask one short question:
 
 > Are you starting a new run, or continuing a previous one?
+> 
 > - new run (no cleaned reads yet)
 > - I have cleaned reads already
 > - I just assembled and want QC
@@ -72,17 +75,19 @@ If auto-detection is ambiguous, ask one short question:
 
 ### 0.3 Route to the right sub-skill
 
-| Stage                 | Action                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------- |
-| `preflight`           | Use `read-qc-trimming` (separate skill). Once cleaned reads exist, return here.                 |
-| `assembly`            | Invoke `assembly/short-read-assembly`, `assembly/long-read-assembly`, or `assembly/hybrid-assembly` based on data type. Each produces a draft `.fasta`. |
-| `polishing`           | Invoke `polishing/genome-polishing` (long-read → short-read sequence). Produces `assembly.fasta`. |
-| `qc`                  | Invoke `validation/assembly-qc`. Produces `report.md` (pass / warn / fail verdicts).            |
-| `qc-done`             | Show the user `$RUN_DIR/report.md`. If `report.md` is `FAIL`, recommend `polishing` or `assembly` re-run. |
-| `annotation`          | Invoke `annotation/genome-annotation`. Produces `annotation-report.md` if you also want QC.     |
-| `annotate-qc-done`    | Show the user `$RUN_DIR/annotation-report.md`. Final summary.                                    |
+| Stage                 | Action                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preflight`           | Use `read-qc-trimming` (separate skill) to get cleaned reads. Then invoke `preflight/genome-input-preflight`. Writes `$RUN_DIR/preflight.md` + `params.json` with `GO` / `GO-WITH-WARNINGS` / `NO-GO` verdict. |
+| `assembly`            | Invoke `assembly/short-read-assembly`, `assembly/long-read-assembly`, or `assembly/hybrid-assembly` based on the platform in `params.json`. Refuses to run without `preflight.md` showing ≥ GO-WITH-WARNINGS. |
+| `polishing`           | Invoke `polishing/genome-polishing` (long-read → short-read sequence). Produces `assembly.fasta`.                                                       |
+| `qc`                  | Invoke `validation/assembly-qc`. Produces `report.md` (pass / warn / fail verdicts).                                                                    |
+| `qc-done`             | Show the user `$RUN_DIR/report.md`. If `report.md` is `FAIL`, recommend `polishing` or `assembly` re-run.                                               |
+| `annotation`          | Invoke `annotation/genome-annotation`. Produces `annotation-report.md` if you also want QC.                                                             |
+| `annotate-qc-done`    | Show the user `$RUN_DIR/annotation-report.md`. Final summary.                                                                                           |
 
 **Do not skip read QC.** Even if the user says they have "raw reads", point them at the `read-qc-trimming` skill first. The 4-phase pipeline here assumes cleaned reads upstream; garbage in → garbage out.
+
+**Do not skip preflight.** The preflight sub-skill computes evidence (coverage, contamination, resource availability) and writes a `params.json` that the assembly sub-skills consume. Skipping preflight means the agent has to invent parameters from scratch every time — and the assembly sub-skill will refuse to run without `preflight.md` ≥ GO-WITH-WARNINGS.
 
 ### 0.4 The run command (only fires at the `polishing` / `qc` / `annotation` stages)
 
@@ -96,10 +101,28 @@ If you ever want a Nextflow runner, see `nextflow-pipelines` (skill) and `nf-cor
 
 ## A. Pipeline Architecture
 
-The analysis is divided into four sequential phases, building upon upstream read quality control and trimming. The agent MUST complete each phase in order and pass the associated "Go/No-Go" gate.
+The analysis is divided into **five sequential phases**, building upon upstream read quality control and trimming. The agent MUST complete each phase in order and pass the associated "Go/No-Go" gate.
+
+### Phase 0: Preflight (The Audit)
+
+**Goal**: Validate inputs (cleaned reads), compute evidence, and write `params.json` + `preflight.md`. This is the **gating** phase — assembly sub-skills refuse to run without `preflight.md` showing ≥ `GO-WITH-WARNINGS`.
+
+- **Skill**: `preflight/genome-input-preflight`
+- **Evidence collected**:
+  - Read statistics (`seqkit stats`).
+  - Platform auto-detection (mean read length → Illumina / ONT / PacBio-HiFi).
+  - Coverage estimate (downsampled `minimap2` + `samtools depth`).
+  - Read-level contamination screen (`kraken2` on a subset).
+  - Disk space check.
+  - Tool availability (with the `setuptools<81` CheckM trap verification).
+  - Resource assessment (`nproc`, `free -g`).
+- **Must-Verify**: All tools present; coverage sufficient; no major contamination.
+- **Exit Gate**: `$RUN_DIR/preflight.md` exists with overall verdict `GO` or `GO-WITH-WARNINGS`; `$RUN_DIR/params.json` exists.
 
 ### Phase 1: Assembly (The Draft)
+
 **Goal**: Generate the initial contig set from cleaned reads.
+
 - **Path Selection**:
   - **Short-Read Only**: $\rightarrow$ `assembly/short-read-assembly`
   - **Long-Read Only**: $\rightarrow$ `assembly/long-read-assembly`
@@ -108,7 +131,9 @@ The analysis is divided into four sequential phases, building upon upstream read
 - **Exit Gate**: A draft assembly (`.fasta`) exists.
 
 ### Phase 2: Polishing (The Correction)
+
 **Goal**: Correct base-level errors (especially INDELs) to achieve "perfect" accuracy.
+
 - **Skill**: `polishing/genome-polishing`
 - **Sequential Logic**:
   1. **Long-read polishing** (`Medaka` / `NanoPolish`) $\rightarrow$ Coarse correction.
@@ -117,7 +142,9 @@ The analysis is divided into four sequential phases, building upon upstream read
 - **Exit Gate**: A polished assembly (`.fasta`) exists.
 
 ### Phase 3: Validation (The Quality Gate)
+
 **Goal**: Quantify contiguity, completeness, and contamination.
+
 - **Skill**: `validation/assembly-qc`
 - **Critical Tools**:
   - `QUAST` (Contiguity).
@@ -131,7 +158,9 @@ The analysis is divided into four sequential phases, building upon upstream read
 - **Output**: `report.md` with pass / warn / fail verdicts.
 
 ### Phase 4: Annotation (The Labeling)
+
 **Goal**: Identify and label biological features.
+
 - **Skill**: `annotation/genome-annotation`
 - **Tool Selection**:
   - **Standard**: `Bakta` (Recommended for 2024/25).
@@ -144,14 +173,15 @@ The analysis is divided into four sequential phases, building upon upstream read
 
 The agent shall maintain a "Genomic State" log and pass explicit artifacts between sub-skills. **The boundary between sub-skills is the filesystem**, not the agent's memory.
 
-| From → To | Artifact | Owner | Consumer |
-| --- | --- | --- | --- |
-| `read-qc-trimming` → Assembly | Cleaned `R1.fastq.gz` (+ `R2.fastq.gz` or `long.fastq.gz`) | `read-qc-trimming` (external skill) | `assembly/*` |
-| Assembly → Polishing | `draft.fasta` + cleaned reads (for back-mapping) | `assembly/*` | `polishing/genome-polishing` |
-| Polishing → Validation | `assembly.fasta` | `polishing/genome-polishing` | `validation/assembly-qc` |
-| Validation → Annotation | `assembly.fasta` + `report.md` (PASS verdict) | `validation/assembly-qc` | `annotation/genome-annotation` |
-| Validation → User | `report.md` (verdict summary, evidence, reproducibility footer) | `validation/assembly-qc` | User |
-| Annotation → User | `.gff`, `.gbk`, `.faa` + optional `annotation-report.md` | `annotation/genome-annotation` | User |
+| From → To                          | Artifact                                                        | Owner                               | Consumer                       |
+| ---------------------------------- | --------------------------------------------------------------- | ----------------------------------- | ------------------------------ |
+| `read-qc-trimming` → Preflight     | Cleaned `R1.fastq.gz` (+ `R2.fastq.gz` or `long.fastq.gz`)      | `read-qc-trimming` (external skill) | `preflight/genome-input-preflight` |
+| Preflight → Assembly               | `preflight.md` + `params.json` (≥ GO-WITH-WARNINGS verdict)     | `preflight/genome-input-preflight`  | `assembly/*`                   |
+| Assembly → Polishing               | `draft.fasta` + cleaned reads (for back-mapping)                | `assembly/*`                        | `polishing/genome-polishing`   |
+| Polishing → Validation             | `assembly.fasta`                                                | `polishing/genome-polishing`        | `validation/assembly-qc`       |
+| Validation → Annotation            | `assembly.fasta` + `report.md` (≥ PASS-WITH-WARNINGS verdict)   | `validation/assembly-qc`            | `annotation/genome-annotation` |
+| Validation → User                  | `report.md` (verdict summary, evidence, reproducibility footer) | `validation/assembly-qc`            | User                           |
+| Annotation → User             | `.gff`, `.gbk`, `.faa` + optional `annotation-report.md`        | `annotation/genome-annotation`      | User                           |
 
 Every sub-skill has an **Inputs/Outputs contract** at its top (mirrors `bettamt-*-qc` style). If the upstream artifact is missing, the sub-skill **must refuse to proceed** and tell the user which upstream skill to run.
 
@@ -168,6 +198,7 @@ All artifacts (`draft.fasta`, `assembly.fasta`, `report.md`, `.gff`) are produce
 ## D. Go/No-Go Gates
 
 The agent must stop and warn the user if:
+
 - **Low Completeness**: CheckM completeness is $< 90\%$.
 - **High Contamination**: CheckM contamination is $> 10\%$, or Kraken2 detects multiple species.
 - **Fragmented Assembly**: N50 is unexpectedly low for a bacterial isolate.
@@ -177,24 +208,28 @@ The agent must stop and warn the user if:
 
 ## E. Common follow-ups
 
-| User says | What to do |
-| --- | --- |
-| "Show me my last report" | `cat $RUN_DIR/report.md` |
-| "Did the assembly work?" | Read `$RUN_DIR/report.md` verdict summary. If missing, run `validation/assembly-qc`. |
-| "Can I publish this?" | Point them to `$RUN_DIR/report.md` (assembly QC) and `$RUN_DIR/annotation-report.md` (annotation QC) as audit-trail artifacts suitable for supplementary material. |
-| "I want to run more samples" | Recommend making a new `$RUN_DIR` per sample. Don't reuse `report.md` paths. |
-| "Annotate my genome" | Confirm `report.md` is `PASS`. Then invoke `annotation/genome-annotation`. |
-| "Something failed and I don't know why" | Check `validation/assembly-qc`'s **§Signature library** (troubleshooting table). Most common failures are listed there. |
+| User says                               | What to do                                                                                                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| "Show me my last report"                | `cat $RUN_DIR/report.md`                                                                                                                                           |
+| "Did the assembly work?"                | Read `$RUN_DIR/report.md` verdict summary. If missing, run `validation/assembly-qc`.                                                                               |
+| "Can I publish this?"                   | Point them to `$RUN_DIR/preflight.md` (input audit), `$RUN_DIR/report.md` (assembly QC), and `$RUN_DIR/annotation-report.md` (annotation QC) as audit-trail artifacts suitable for supplementary material. |
+| "I want to run more samples"            | Recommend making a new `$RUN_DIR` per sample. Don't reuse `preflight.md` / `report.md` paths.                                                                       |
+| "Annotate my genome"                    | Confirm `report.md` is `PASS`. Then invoke `annotation/genome-annotation`.                                                                                         |
+| "Something failed and I don't know why" | Check `preflight/genome-input-preflight`'s **§Signature library** (input validation) and `validation/assembly-qc`'s **§Signature library** (post-assembly). Most common failures are listed there. |
+| "What params should I use?"             | Invoke `preflight/genome-input-preflight` — it computes coverage, platform, and resource budget and writes `params.json` with rationale.                           |
 
 ## F. Procedural Guidelines
 
-### 1. The Evidence Chain (4 states)
-- **State 1**: Cleaned reads $\rightarrow$ Draft Assembly.
+### 1. The Evidence Chain (5 states)
+
+- **State 0**: Cleaned reads $\rightarrow$ Preflight evidence $\rightarrow$ `preflight.md` + `params.json`.
+- **State 1**: Preflight passed $\rightarrow$ Draft Assembly.
 - **State 2**: Draft Assembly $\rightarrow$ Polished Assembly.
 - **State 3**: Polished Assembly $\rightarrow$ QC Metrics (CheckM/QUAST/Kraken2/BUSCO).
 - **State 4**: QC Passed $\rightarrow$ Annotated Genome.
 
 ### 2. Disk space budget
+
 Bacterial genome assembly is small relative to eukaryotic WGS, but intermediates can still consume 20–50 GB on a high-coverage Illumina run. Before starting, check:
 
 ```bash
@@ -204,6 +239,7 @@ df -BG "$RUN_DIR" | awk 'NR==2 {print "Free space:", $4, "GB (recommend > 50 GB 
 If free space < 50 GB, warn — `work/` and `results/` coexist during the run.
 
 ### 3. Environment detection
+
 ```bash
 # Are we in a pixi env already?
 if command -v pixi >/dev/null 2>&1 && [ -f "$RUN_DIR/pixi.toml" ]; then
@@ -260,7 +296,8 @@ For users unfamiliar with the terminology:
 ## Verification
 
 - [ ] Read QC was performed upstream (`read-qc-trimming` skill).
-- [ ] All four phases completed in sequence.
+- [ ] Preflight was performed (`preflight/genome-input-preflight`); `preflight.md` overall verdict ≥ `GO-WITH-WARNINGS`.
+- [ ] All four phases (Assembly → Polishing → Validation → Annotation) completed in sequence.
 - [ ] Polishing sequence followed: Long $\rightarrow$ Short.
 - [ ] CheckM completeness $> 95\%$ and contamination $< 5\%$.
 - [ ] `report.md` produced by `validation/assembly-qc` shows PASS verdict.

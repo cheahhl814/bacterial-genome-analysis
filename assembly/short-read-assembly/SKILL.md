@@ -42,8 +42,12 @@ This sub-skill **refuses to run** unless the upstream artifacts are present.
 | --- | --- | --- |
 | `$RUN_DIR/cleaned_R1.fastq.gz` | `read-qc-trimming` | yes |
 | `$RUN_DIR/cleaned_R2.fastq.gz` | `read-qc-trimming` | yes (paired-end) |
+| `$RUN_DIR/preflight.md` | `preflight/genome-input-preflight` | yes (verdict ≥ GO-WITH-WARNINGS) |
+| `$RUN_DIR/params.json` | `preflight/genome-input-preflight` | yes (platform + assembler recommendation) |
 
 If cleaned reads are not at those paths, stop and tell the user: *"Run the `read-qc-trimming` skill first; this skill assumes cleaned reads as input."*
+
+If `preflight.md` is missing or overall verdict is `NO-GO`, stop and tell the user: *"Run `preflight/genome-input-preflight` first; this skill refuses to assemble without a preflight verdict ≥ GO-WITH-WARNINGS."*
 
 ### Outputs (produced)
 | Path | Owner | Format | Notes |
@@ -58,6 +62,8 @@ If cleaned reads are not at those paths, stop and tell the user: *"Run the `read
 ## Description
 
 Assemble bacterial genomes from short-read sequencing data. Since short reads cannot resolve large repetitive regions (e.g., rRNA operons, mobile elements), the result is typically a fragmented draft. This skill transforms cleaned FASTQ files into a FASTA assembly following the **nf-core/bacass** paradigm.
+
+> **Preflight guard.** Before running any assembly command, verify `preflight.md` overall verdict ≥ `GO-WITH-WARNINGS` and `params.json` `$platform` is `illumina` (or `unknown`, in which case default to `spades`). If `params.json` recommends a different assembler (e.g. `skesa` for speed, `megahit` for metagenomes), use that — the preflight evidence supports the choice.
 
 ## Conceptual Background
 
