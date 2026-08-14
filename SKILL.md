@@ -1,7 +1,7 @@
 ---
 name: bacterial-genome-analysis
-description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, annotation, and AMR gene screening (Phase 5a) into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, annotate, or screen a bacterial genome — or when they ask "is my bacterial genome ready?" or "what AMR genes does my isolate carry?". Builds on the upstream read-qc-trimming skill. Pairs with the bettamt-style ask-user stop point pattern from Betta-WGS-agent.
-version: 5.1.0
+description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill. Pairs with the bettamt-style ask-user stop point pattern from Betta-WGS-agent.
+version: 5.0.2
 updated: "2026-08-14"
 triggers:
   - "assemble bacterial genome"
@@ -16,8 +16,6 @@ triggers:
 
 # Meta-Skill: bacterial-genome-analysis
 
-> **v5.1 redesign.** Added **Phase 5a — AMR Gene Screening** (three sub-skills: `analysis/amr-preflight`, `analysis/amr-screening`, `analysis/amr-qc`). Adopts the `bettamt-preflight` → `bettamt-qc` pattern from BettaMt/Betta-WGS-agent. Default tools: AMRFinderPlus + ABRicate (CARD + Resfinder + ARG-ANNOT) with cross-validation. Adds 10 new ask-user stop points (SP1–SP10). The pipeline architecture is now **5 phases** (Preflight + Assembly + Polishing + Validation + Annotation + AMR Screening).
-> 
 > **v5.0.2 redesign.** Added the **Ask-User Stop Points** pattern, adopted from `Betta-WGS-agent` (betta-preflight's "validate with user or via command line inspection"). Every sub-skill with decision ambiguity now has explicit **SP1–SP19** stop points: each fires only when the evidence is ambiguous, each uses the **Evidence + Recommend + Options** format, and each lists the default (auto-pick) for the unambiguous case. The pipeline architecture is unchanged from v5.0.1 (Phase 0 Preflight + 4 phases).
 
 ## Audience
@@ -57,14 +55,11 @@ Try to detect automatically **before** asking:
 
 ```bash
 # Stage detection ladder — first match wins
-test -f "$RUN_DIR/amr_report.md"        && STAGE="amr-report-done"   # Phase 5a final report exists
-test -f "$RUN_DIR/amr_findings.tsv"      && STAGE="amr-qc"            # raw hits exist → run amr-qc
-test -f "$RUN_DIR/amr_preflight.md"      && STAGE="amr-screening"     # amr preflight done → run screening
-test -f "$RUN_DIR/annotation-report.md"  && STAGE="amr-preflight"     # annotate QC done → optional Phase 5a
-test -f "$RUN_DIR/assembly.fasta"        && STAGE="qc"                # polished FASTA exists → run succeeded, time for QC
+test -f "$RUN_DIR/annotation-report.md" && STAGE="annotate-qc-done"
+test -f "$RUN_DIR/assembly.fasta"        && STAGE="qc"            # polished FASTA exists → run succeeded, time for QC
 test -f "$RUN_DIR/diagnosis.md"          && STAGE="review-diagnosis"
-test -f "$RUN_DIR/preflight.md"          && STAGE="assembly"          # preflight done → pick assembly path
-test -f "$RUN_DIR/cleaned_R1.fastq.gz"   && STAGE="preflight"         # cleaned reads exist → run preflight sub-skill
+test -f "$RUN_DIR/preflight.md"          && STAGE="assembly"      # preflight done → pick assembly path
+test -f "$RUN_DIR/cleaned_R1.fastq.gz"   && STAGE="preflight"     # cleaned reads exist → run preflight sub-skill
 : "${STAGE:=preflight}"
 ```
 
@@ -108,11 +103,7 @@ Auto-pick the default when the evidence is unambiguous. Ask only when the agent 
 | `qc`                  | Invoke `validation/assembly-qc`. Produces `report.md` (pass / warn / fail verdicts).                                                                    |
 | `qc-done`             | Show the user `$RUN_DIR/report.md`. If `report.md` is `FAIL`, recommend `polishing` or `assembly` re-run.                                               |
 | `annotation`          | Invoke `annotation/genome-annotation`. Produces `annotation-report.md` if you also want QC.                                                             |
-| `annotate-qc-done`    | Show the user `$RUN_DIR/annotation-report.md`. **Ask whether they want Phase 5a AMR screening** (recommended for clinical / surveillance isolates). |
-| `amr-preflight`       | Invoke `analysis/amr-preflight`. Validates assembly for AMR screening, picks tool set + DBs, writes `amr_params.json` + `amr_preflight.md` (GO / GO-WITH-WARNINGS / NO-GO). |
-| `amr-screening`       | Invoke `analysis/amr-screening`. Runs AMRFinderPlus + ABRicate cross-validation. Produces `amr_findings.tsv` + `amr_evidence/`. |
-| `amr-qc`              | Invoke `analysis/amr-qc`. Builds `amr_report.md` with cross-validated hits, discrepancy table, phenotype breakdown, and reproducibility footer. |
-| `amr-report-done`     | Show the user `$RUN_DIR/amr_report.md`. Final Phase 5a deliverable. (Optional next: Phase 5b virulence, 5c mobilome, 5d typing — separate sub-skills.) |
+| `annotate-qc-done`    | Show the user `$RUN_DIR/annotation-report.md`. Final summary.                                                                                           |
 
 **Do not skip read QC.** Even if the user says they have "raw reads", point them at the `read-qc-trimming` skill first. The 4-phase pipeline here assumes cleaned reads upstream; garbage in → garbage out.
 
@@ -198,19 +189,6 @@ The analysis is divided into **five sequential phases**, building upon upstream 
   - **Official**: `PGAP` (NCBI).
 - **Exit Gate**: Standard output files (`.gff`, `.gbk`, `.faa`) produced.
 
-### Phase 5a: AMR Gene Screening (Clinical & Surveillance)
-
-**Goal**: Detect antimicrobial resistance genes and point mutations in the assembly, cross-validated across AMRFinderPlus + ABRicate. Required for any clinical isolate or surveillance sample.
-
-- **Skills**: `analysis/amr-preflight` → `analysis/amr-screening` → `analysis/amr-qc` (mirrors the `bettamt-preflight` → `bettamt-qc` pattern from BettaMt/Betta-WGS-agent).
-- **Tool Selection**:
-  - **Default**: `AMRFinderPlus` (NCBI Pathogen Detection; includes point mutations) + `ABRicate` (CARD + Resfinder + ARG-ANNOT).
-  - **Opt-in**: `RGI/CARD` (gold-standard ARO ontology), `staramr` (Enterococcus/Salmonella workflows).
-  - **Ask-user confirmation** before running; the user may override the default tool set in `amr_params.json`.
-- **Exit Gate**: `amr_report.md` exists with overall verdict `GO` or `GO-WITH-WARNINGS`.
-
-This is the **first extension beyond the nf-core/bacass paradigm** (current reference for Phases 1–4). Phase 5 is intentionally NOT part of `nf-core/bacass` because it's project-specific. Phase 5b (virulence), 5c (mobilome), 5d (typing/pangenome), and 5e (specialized) are future sub-skills; see `obs-2026-08-13-recommended-phase-5-extension-for-bacterial-genome-analysis-`.
-
 ## B. The Evidence Chain & Handoff Contract
 
 The agent shall maintain a "Genomic State" log and pass explicit artifacts between sub-skills. **The boundary between sub-skills is the filesystem**, not the agent's memory.
@@ -223,10 +201,7 @@ The agent shall maintain a "Genomic State" log and pass explicit artifacts betwe
 | Polishing → Validation             | `assembly.fasta`                                                | `polishing/genome-polishing`        | `validation/assembly-qc`       |
 | Validation → Annotation            | `assembly.fasta` + `report.md` (≥ PASS-WITH-WARNINGS verdict)   | `validation/assembly-qc`            | `annotation/genome-annotation` |
 | Validation → User                  | `report.md` (verdict summary, evidence, reproducibility footer) | `validation/assembly-qc`            | User                           |
-| Annotation → AMR Preflight         | `assembly.fasta` + `annotation-report.md`                       | `annotation/genome-annotation`      | `analysis/amr-preflight`       |
-| AMR Preflight → AMR Screening      | `amr_params.json` + `amr_preflight.md` (≥ GO-WITH-WARNINGS)     | `analysis/amr-preflight`            | `analysis/amr-screening`       |
-| AMR Screening → AMR QC             | `amr_findings.tsv` + `amr_evidence/`                            | `analysis/amr-screening`            | `analysis/amr-qc`              |
-| AMR QC → User                      | `amr_report.md` (cross-validated hits, phenotype breakdown)     | `analysis/amr-qc`                   | User                           |
+| Annotation → User             | `.gff`, `.gbk`, `.faa` + optional `annotation-report.md`        | `annotation/genome-annotation`      | User                           |
 
 Every sub-skill has an **Inputs/Outputs contract** at its top (mirrors `bettamt-*-qc` style). If the upstream artifact is missing, the sub-skill **must refuse to proceed** and tell the user which upstream skill to run.
 
@@ -248,8 +223,6 @@ The agent must stop and warn the user if:
 - **High Contamination**: CheckM contamination is $> 10\%$, or Kraken2 detects multiple species.
 - **Fragmented Assembly**: N50 is unexpectedly low for a bacterial isolate.
 - **Polishing Missed**: Moving to validation without polishing a long-read assembly.
-- **AMR Preflight `NO-GO`**: `amr_preflight.md` shows `NO-GO` verdict — do not run `amr-screening`.
-- **AMR Report `NO-GO`**: `amr_report.md` shows `NO-GO` verdict — clinically important discrepancies unresolved; do not use for clinical action.
 
 **Note on the two threshold tiers:** the 90%/10% figures above are an early-warning tier — cross this and the agent should flag concern and consider re-optimizing before proceeding. The stricter MIMAG high-quality target used by `validation/assembly-qc` (Phase 3's actual exit gate) is **>95% completeness / <5% contamination**; that stricter pair is what determines the real Go/No-Go decision for annotation. Do not treat "above 90/below 10 but below 95/above 5" as a pass — it is warning territory, not a go.
 
@@ -264,9 +237,6 @@ The agent must stop and warn the user if:
 | "Annotate my genome"                    | Confirm `report.md` is `PASS`. Then invoke `annotation/genome-annotation`.                                                                                         |
 | "Something failed and I don't know why" | Check `preflight/genome-input-preflight`'s **§Signature library** (input validation) and `validation/assembly-qc`'s **§Signature library** (post-assembly). Most common failures are listed there. |
 | "What params should I use?"             | Invoke `preflight/genome-input-preflight` — it computes coverage, platform, and resource budget and writes `params.json` with rationale.                           |
-| "Screen my isolate for AMR genes"       | Confirm `report.md` is `PASS` (or `PASS-WITH-WARNINGS`). Then invoke `analysis/amr-preflight` → `analysis/amr-screening` → `analysis/amr-qc` in sequence. Default tools: AMRFinderPlus + ABRicate (CARD + Resfinder + ARG-ANNOT). |
-| "What AMR genes does my isolate carry?" | `cat $RUN_DIR/amr_report.md` (after running the Phase 5a pipeline). Cross-validated hits are listed by phenotype class. |
-| "Build a clinical AMR report"           | Invoke the Phase 5a pipeline. `amr_report.md` is structured for clinical review (verdict + discrepancy table + phenotype breakdown + reproducibility footer). |
 
 ## F. Procedural Guidelines
 

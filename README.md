@@ -1,7 +1,5 @@
 # Bacterial Genome Analysis Skills
 
-> **v5.1.** Added **Phase 5a — AMR Gene Screening** with three new sub-skills (`analysis/amr-preflight`, `analysis/amr-screening`, `analysis/amr-qc`). Adopts the `bettamt-preflight` → `bettamt-qc` pattern from BettaMt/Betta-WGS-agent. Default tools: AMRFinderPlus + ABRicate (CARD + Resfinder + ARG-ANNOT) with cross-validation. Adds 10 new ask-user stop points (SP1–SP10). The pipeline architecture is now **6 phases** (Preflight + Assembly + Polishing + Validation + Annotation + AMR Screening).
->
 > **v5.0.2.** Added the **Ask-User Stop Points** pattern (SP0–SP19), adopted from `Betta-WGS-agent`. Each sub-skill with decision ambiguity now has explicit stop points that fire only when evidence is ambiguous; the format is **Evidence + Recommend + 2–4 options**. v5.0.1 structure (preflight + 4 phases) is unchanged.
 
 This meta-skill orchestrates the end-to-end reconstruction of bacterial genomes, transforming cleaned sequencing reads into a validated, polished, and annotated genomic sequence. It implements the **"Finished Genome"** paradigm, ensuring that assembly errors are corrected before biological features are labeled.
@@ -19,7 +17,6 @@ The analysis follows a strict **5-phase evidence chain** (building upon upstream
 | **2** | **Polishing** (The Correction) | Correct base-level errors (INDELs, SNPs). | `/polishing` | `$RUN_DIR/assembly.fasta` |
 | **3** | **Validation** (The Quality Gate) | Quantify contiguity, completeness, contamination. | `/validation` | `$RUN_DIR/report.md` |
 | **4** | **Annotation** (The Labeling) | Identify and label biological features. | `/annotation` | `$RUN_DIR/bakta_output/<prefix>.{gff3,gbff,faa,fna}` |
-| **5a** | **AMR Screening** (Clinical) | Detect AMR genes + point mutations, cross-validated across AMRFinderPlus + ABRicate. | `/analysis` | `$RUN_DIR/amr_report.md` |
 
 ### Phase Selection Logic
 
@@ -29,26 +26,7 @@ The analysis follows a strict **5-phase evidence chain** (building upon upstream
 
 ## v5 design — what changed
 
-### v5.1 (current) — Phase 5a AMR Screening
-
-- **New Phase 5a** — AMR Gene Screening. Three sub-skills in `analysis/`:
-  - `analysis/amr-preflight/SKILL.md` — validates assembly, picks tool set, decides point-mutation scope; writes `amr_params.json` + `amr_preflight.md` (verdict).
-  - `analysis/amr-screening/SKILL.md` — runs AMRFinderPlus + ABRicate (CARD + Resfinder + ARG-ANNOT); cross-validates; writes `amr_findings.tsv` + `amr_evidence/`.
-  - `analysis/amr-qc/SKILL.md` — builds `amr_report.md` (verdict + discrepancy table + phenotype breakdown + reproducibility footer).
-- **Default tools**: AMRFinderPlus + ABRicate. **RGI/CARD** and **staramr** are opt-in.
-- **Cross-validation pattern**: agreement ≥ 2 tools = `confirmed`; 1 tool = `single_tool` (flag for manual review).
-- **10 new ask-user stop points** (SP20–SP29) added across the 3 sub-skills, in the same **Evidence + Recommend + Options** format as v5.0.2.
-- **Master orchestrator** updated: stage detection ladder now includes `amr-preflight`, `amr-screening`, `amr-qc`, `amr-report-done`; routing table extended; handoff contract table adds `Annotation → AMR Preflight`, `AMR Preflight → AMR Screening`, `AMR Screening → AMR QC`, `AMR QC → User`.
-- **pixi.toml** adds `amrfinder`, `abricate` (with `rgi`, `staramr` commented out as opt-in).
-- **Positioning**: First extension beyond the `nf-core/bacass` paradigm; complements bacass for clinical/surveillance use.
-
-| Sub-skill | Stop points | Trigger categories |
-|---|---|---|
-| `analysis/amr-preflight` | SP1–SP4 | fragmented assembly, plasmid replicons, organism ambiguous, AMRFinderPlus DB missing/stale |
-| `analysis/amr-screening` | SP5, SP6 | assembly size unusual, ABRicate DB choice ambiguous |
-| `analysis/amr-qc` | SP7–SP10 | clinically important discrepancy, zero hits, high hit count, ARIBA data present |
-
-### v5.0.2 (Ask-User Stop Points)
+### v5.0.2 (current)
 
 - **Ask-User Stop Points** added across the master orchestrator and 5 sub-skills (19 total: SP0 + SP1–SP19).
 - Each stop point uses the **Evidence + Recommend + Options** format adopted from `Betta-WGS-agent` (`betta-preflight`'s "validate with user or via command line inspection").

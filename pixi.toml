@@ -1,6 +1,6 @@
 [project]
 name = "bacterial-genome-analysis"
-version = "3.1.0"
+version = "3.0.0"
 description = "Meta-skill orchestrating bacterial genome assembly, polishing, validation, and annotation."
 channels = ["conda-forge", "bioconda"]
 platforms = ["linux-64", "osx-64", "osx-arm64"]
@@ -47,20 +47,6 @@ prokka = "*"
 dfast = "*"
 tbl2asn = "*"
 
-# AMR / Phase 5a Tools
-# AMRFinderPlus (NCBI Pathogen Detection) — default for Phase 5a.
-# Detects AMR genes, point mutations, stress-response, and virulence factors.
-amrfinder = "*"
-# ABRicate — mass screening of contigs against 17+ bundled DBs.
-# Used as the cross-validation partner to AMRFinderPlus.
-abricate = "*"
-# RGI/CARD — ARO-ontology gold standard for AMR mechanism typing. Optional opt-in.
-# Pulls in `card-database` as a transitive dep (heavyweight).
-# rgi = "*"
-# staramr — cross-validator that orchestrates ResFinder + PointFinder + PlasmidFinder.
-# Useful as a single-command option for users familiar with Enterococcus/Salmonella workflows.
-# staramr = "*"
-
 [tasks]
 # Common workflows as pixi tasks
 assembly-short = "echo 'Starting short-read assembly workflow...'"
@@ -69,6 +55,3 @@ assembly-hybrid = "echo 'Starting hybrid assembly workflow...'"
 polish = "echo 'Starting genome polishing workflow...'"
 validate = "echo 'Starting assembly validation workflow...'"
 annotate = "echo 'Starting genome annotation workflow...'"
-amr-preflight = "echo 'Validating assembly + selecting AMR tools...'"
-amr-screen = "echo 'Running AMR gene screening (AMRFinderPlus + ABRicate)...'"
-amr-report = "echo 'Building AMR cross-validation report...'"
