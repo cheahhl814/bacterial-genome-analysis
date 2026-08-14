@@ -1,6 +1,6 @@
 ---
 name: bacterial-genome-analysis
-description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates QC, assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm.
+description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill.
 version: 5
 updated: "2026-08-14"
 triggers:
@@ -10,15 +10,19 @@ triggers:
   - "de novo bacterial assembly"
   - "annotate bacterial genome"
   - "hybrid bacterial assembly"
+  - "is my bacterial genome ready"
+  - "bacterial genome QC report"
 ---
 
 # Meta-Skill: bacterial-genome-analysis
+
+> **v5 redesign.** This skill is now a thin orchestrator plus four specialists. It follows the agentic skill pattern documented at `agentskills.io/specification`: every sub-skill has an explicit input/output contract, a single responsibility, and a hand-off to the next phase. The pipeline architecture is unchanged from v4 — only the *structure* of the skill changed.
 
 ## Audience
 
 This meta-skill is designed to serve **two simultaneous audiences**:
 
-1.  **AI Coding Agents**: Triggered by the phrases above. The agent must execute the strict evidence chain and Go/No-Go gates described below.
+1.  **AI Coding Agents**: Triggered by the phrases above. The agent must execute the strict evidence chain, run the Go/No-Go gates, and write the `report.md` / `annotation-report.md` artifacts the sub-skills specify.
 2.  **Human Users (Bioinformaticians & Biologists)**: Read this document as a workflow guide. The sections explain *why* each phase exists and *what* trade-offs apply at each decision point.
 
 ## When to Use This Skill
@@ -33,13 +37,64 @@ Use this meta-skill when you need to:
 **Do NOT use this skill** if:
 -   You have a well-characterized reference genome (use a reference-based variant calling pipeline instead).
 -   You are analyzing eukaryotic, viral, or metagenomic data (different paradigms apply).
--   You only need raw read statistics (use a read QC skill instead).
+-   You only need raw read statistics or read trimming (use the `read-qc-trimming` skill first; this meta-skill expects **cleaned reads** as input).
 
-## Description
+## 0. Orchestrator — detect stage, route to the right skill
 
-This meta-skill orchestrates the full bacterial genome reconstruction pipeline. It ensures that the assembly is not just a "draft" but is polished for nucleotide accuracy and validated for completeness and contamination before functional annotation. The workflow follows the best practices implemented in `nf-core/bacass`.
+This meta-skill is a **router**, not a doer. It does not duplicate logic from the sub-skills. Its job is to ask: **"what stage is the user at, and which sub-skill should they invoke next?"**
 
-## Pipeline Architecture
+### 0.1 Locate the run directory
+
+By convention the agent writes handoff files (see §B) to a run directory. Default: the current working directory. Override with `RUN_DIR` env var.
+
+### 0.2 Detect the user's stage
+
+Try to detect automatically **before** asking:
+
+```bash
+# Stage detection ladder — first match wins
+test -f "$RUN_DIR/annotation-report.md" && STAGE="annotate-qc-done"
+test -f "$RUN_DIR/assembly.fasta"        && STAGE="qc"            # polished FASTA exists → run succeeded, time for QC
+test -f "$RUN_DIR/diagnosis.md"          && STAGE="review-diagnosis"
+test -f "$RUN_DIR/params.json"           && STAGE="assembly"      # inputs ready → pick assembly path
+test -f "$RUN_DIR/cleaned_R1.fastq.gz"   && STAGE="preflight"
+: "${STAGE:=preflight}"
+```
+
+If auto-detection is ambiguous, ask one short question:
+
+> Are you starting a new run, or continuing a previous one?
+> - new run (no cleaned reads yet)
+> - I have cleaned reads already
+> - I just assembled and want QC
+> - I just ran QC and want annotation
+> - Something failed and I need help debugging
+
+### 0.3 Route to the right sub-skill
+
+| Stage                 | Action                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `preflight`           | Use `read-qc-trimming` (separate skill). Once cleaned reads exist, return here.                 |
+| `assembly`            | Invoke `assembly/short-read-assembly`, `assembly/long-read-assembly`, or `assembly/hybrid-assembly` based on data type. Each produces a draft `.fasta`. |
+| `polishing`           | Invoke `polishing/genome-polishing` (long-read → short-read sequence). Produces `assembly.fasta`. |
+| `qc`                  | Invoke `validation/assembly-qc`. Produces `report.md` (pass / warn / fail verdicts).            |
+| `qc-done`             | Show the user `$RUN_DIR/report.md`. If `report.md` is `FAIL`, recommend `polishing` or `assembly` re-run. |
+| `annotation`          | Invoke `annotation/genome-annotation`. Produces `annotation-report.md` if you also want QC.     |
+| `annotate-qc-done`    | Show the user `$RUN_DIR/annotation-report.md`. Final summary.                                    |
+
+**Do not skip read QC.** Even if the user says they have "raw reads", point them at the `read-qc-trimming` skill first. The 4-phase pipeline here assumes cleaned reads upstream; garbage in → garbage out.
+
+### 0.4 The run command (only fires at the `polishing` / `qc` / `annotation` stages)
+
+This skill ships **bash recipes** for each phase — there is no Nextflow runner. For each phase, the sub-skill documents the exact `pixi run` commands. The orchestrator's job is just to:
+
+1. Confirm the upstream artifact exists (`assembly/*.fasta` for polishing; polished FASTA for qc; polished FASTA for annotation).
+2. Print the recommended command and ask for confirmation.
+3. After execution, write the relevant `report.md` and hand off to the next stage.
+
+If you ever want a Nextflow runner, see `nextflow-pipelines` (skill) and `nf-core/bacass` (reference pipeline) — but that's deliberately out of scope for v5.
+
+## A. Pipeline Architecture
 
 The analysis is divided into four sequential phases, building upon upstream read quality control and trimming. The agent MUST complete each phase in order and pass the associated "Go/No-Go" gate.
 
@@ -64,7 +119,7 @@ The analysis is divided into four sequential phases, building upon upstream read
 ### Phase 3: Validation (The Quality Gate)
 **Goal**: Quantify contiguity, completeness, and contamination.
 - **Skill**: `validation/assembly-qc`
-- **Critical Tools**: 
+- **Critical Tools**:
   - `QUAST` (Contiguity).
   - `CheckM` (Completeness/Contamination).
   - `BUSCO` (Evolutionary completeness).
@@ -73,6 +128,7 @@ The analysis is divided into four sequential phases, building upon upstream read
   - **Completeness**: $> 95\%$ (MIMAG high-quality standard).
   - **Contamination**: $< 5\%$.
 - **Action**: If criteria are not met, the agent must return to Phase 1 or 2 to optimize assembly/polishing.
+- **Output**: `report.md` with pass / warn / fail verdicts.
 
 ### Phase 4: Annotation (The Labeling)
 **Goal**: Identify and label biological features.
@@ -84,16 +140,33 @@ The analysis is divided into four sequential phases, building upon upstream read
   - **Official**: `PGAP` (NCBI).
 - **Exit Gate**: Standard output files (`.gff`, `.gbk`, `.faa`) produced.
 
-## Procedural Guidelines
+## B. The Evidence Chain & Handoff Contract
 
-### 1. The Evidence Chain
-The agent shall maintain a "Genomic State" log:
-- **State 1**: Cleaned reads $\rightarrow$ Draft Assembly.
-- **State 2**: Draft Assembly $\rightarrow$ Polished Assembly.
-- **State 3**: Polished Assembly $\rightarrow$ QC Metrics (CheckM/QUAST/Kraken2).
-- **State 4**: QC Passed $\rightarrow$ Annotated Genome.
+The agent shall maintain a "Genomic State" log and pass explicit artifacts between sub-skills. **The boundary between sub-skills is the filesystem**, not the agent's memory.
 
-### 2. Go/No-Go Gates
+| From → To | Artifact | Owner | Consumer |
+| --- | --- | --- | --- |
+| `read-qc-trimming` → Assembly | Cleaned `R1.fastq.gz` (+ `R2.fastq.gz` or `long.fastq.gz`) | `read-qc-trimming` (external skill) | `assembly/*` |
+| Assembly → Polishing | `draft.fasta` + cleaned reads (for back-mapping) | `assembly/*` | `polishing/genome-polishing` |
+| Polishing → Validation | `assembly.fasta` | `polishing/genome-polishing` | `validation/assembly-qc` |
+| Validation → Annotation | `assembly.fasta` + `report.md` (PASS verdict) | `validation/assembly-qc` | `annotation/genome-annotation` |
+| Validation → User | `report.md` (verdict summary, evidence, reproducibility footer) | `validation/assembly-qc` | User |
+| Annotation → User | `.gff`, `.gbk`, `.faa` + optional `annotation-report.md` | `annotation/genome-annotation` | User |
+
+Every sub-skill has an **Inputs/Outputs contract** at its top (mirrors `bettamt-*-qc` style). If the upstream artifact is missing, the sub-skill **must refuse to proceed** and tell the user which upstream skill to run.
+
+## C. Output contract — no artifact
+
+This orchestrator skill produces **no file of its own**. Its only outputs are:
+
+- The phase-selection routing decision (§0.3)
+- The recommended `pixi run` command for the chosen sub-skill
+- The hand-off message naming the next skill
+
+All artifacts (`draft.fasta`, `assembly.fasta`, `report.md`, `.gff`) are produced by the sub-skills. Don't try to write them from here.
+
+## D. Go/No-Go Gates
+
 The agent must stop and warn the user if:
 - **Low Completeness**: CheckM completeness is $< 90\%$.
 - **High Contamination**: CheckM contamination is $> 10\%$, or Kraken2 detects multiple species.
@@ -101,6 +174,43 @@ The agent must stop and warn the user if:
 - **Polishing Missed**: Moving to validation without polishing a long-read assembly.
 
 **Note on the two threshold tiers:** the 90%/10% figures above are an early-warning tier — cross this and the agent should flag concern and consider re-optimizing before proceeding. The stricter MIMAG high-quality target used by `validation/assembly-qc` (Phase 3's actual exit gate) is **>95% completeness / <5% contamination**; that stricter pair is what determines the real Go/No-Go decision for annotation. Do not treat "above 90/below 10 but below 95/above 5" as a pass — it is warning territory, not a go.
+
+## E. Common follow-ups
+
+| User says | What to do |
+| --- | --- |
+| "Show me my last report" | `cat $RUN_DIR/report.md` |
+| "Did the assembly work?" | Read `$RUN_DIR/report.md` verdict summary. If missing, run `validation/assembly-qc`. |
+| "Can I publish this?" | Point them to `$RUN_DIR/report.md` (assembly QC) and `$RUN_DIR/annotation-report.md` (annotation QC) as audit-trail artifacts suitable for supplementary material. |
+| "I want to run more samples" | Recommend making a new `$RUN_DIR` per sample. Don't reuse `report.md` paths. |
+| "Annotate my genome" | Confirm `report.md` is `PASS`. Then invoke `annotation/genome-annotation`. |
+| "Something failed and I don't know why" | Check `validation/assembly-qc`'s **§Signature library** (troubleshooting table). Most common failures are listed there. |
+
+## F. Procedural Guidelines
+
+### 1. The Evidence Chain (4 states)
+- **State 1**: Cleaned reads $\rightarrow$ Draft Assembly.
+- **State 2**: Draft Assembly $\rightarrow$ Polished Assembly.
+- **State 3**: Polished Assembly $\rightarrow$ QC Metrics (CheckM/QUAST/Kraken2/BUSCO).
+- **State 4**: QC Passed $\rightarrow$ Annotated Genome.
+
+### 2. Disk space budget
+Bacterial genome assembly is small relative to eukaryotic WGS, but intermediates can still consume 20–50 GB on a high-coverage Illumina run. Before starting, check:
+
+```bash
+df -BG "$RUN_DIR" | awk 'NR==2 {print "Free space:", $4, "GB (recommend > 50 GB for typical isolate, > 200 GB for high-coverage Illumina)"}'
+```
+
+If free space < 50 GB, warn — `work/` and `results/` coexist during the run.
+
+### 3. Environment detection
+```bash
+# Are we in a pixi env already?
+if command -v pixi >/dev/null 2>&1 && [ -f "$RUN_DIR/pixi.toml" ]; then
+    PIXI_ACTIVE=true
+    echo "pixi environment available — use 'pixi run <task>' for each phase"
+fi
+```
 
 ## Installation & Environment
 
@@ -114,6 +224,9 @@ cd bacterial-genome-analysis-env
 # Add the required channels
 pixi project channel add conda-forge
 pixi project channel add bioconda
+
+# Install all tools from the skill's pixi.toml
+pixi add --manifest-path /path/to/bacterial-genome-analysis/pixi.toml
 ```
 
 ## Glossary
@@ -146,8 +259,16 @@ For users unfamiliar with the terminology:
 
 ## Verification
 
+- [ ] Read QC was performed upstream (`read-qc-trimming` skill).
 - [ ] All four phases completed in sequence.
 - [ ] Polishing sequence followed: Long $\rightarrow$ Short.
 - [ ] CheckM completeness $> 95\%$ and contamination $< 5\%$.
+- [ ] `report.md` produced by `validation/assembly-qc` shows PASS verdict.
 - [ ] Kraken2 confirms sample purity.
 - [ ] Final annotation produced in GFF and GenBank formats.
+
+## Handoff pointers
+
+After this orchestrator routes the user to a phase, the agent should explicitly state which sub-skill was invoked and what file it produces. Example:
+
+> I've handed off to `validation/assembly-qc`. It will run CheckM, QUAST, BUSCO, and Kraken2 against your polished FASTA, then write `report.md` to your run directory with pass/warn/fail verdicts. Say the word and I'll invoke it.

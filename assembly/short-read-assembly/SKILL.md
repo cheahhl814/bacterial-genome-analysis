@@ -1,8 +1,8 @@
 ---
 name: short-read-assembly
-description: Assemble bacterial genomes from short-read sequencing data (Illumina). This skill focuses on producing the most contiguous draft possible from paired-end reads, utilizing De Bruijn graph assemblers and integrating quality control to ensure data integrity before assembly.
-version: 4
-updated: "2026-08-09"
+description: Assemble bacterial genomes from short-read sequencing data (Illumina). This skill focuses on producing the most contiguous draft possible from paired-end reads, utilizing De Bruijn graph assemblers and integrating quality control to ensure data integrity before assembly. Builds on the upstream read-qc-trimming skill.
+version: 5
+updated: "2026-08-14"
 triggers:
   - "assemble short reads"
   - "illumina assembly"
@@ -18,7 +18,7 @@ triggers:
 ## Audience
 
 This skill serves two purposes:
-- **AI Agents**: Triggered by phrases like *"assemble short reads"* or *"illumina assembly"*. Must execute the strategy selection and verification steps below.
+- **AI Agents**: Triggered by phrases like *"assemble short reads"* or *"illumina assembly"*. Must execute the strategy selection and verification steps below, and write `Kraken2` contamination results next to the assembly.
 - **Human Users**: Provides conceptual background, decision rationale, and troubleshooting guidance.
 
 ## When to Use This Skill
@@ -32,6 +32,28 @@ Do NOT use this skill if:
 - You have long-read data (use `long-read-assembly` instead).
 - You have both short and long reads (use `hybrid-assembly` for the best results).
 - You need a completely closed genome (short reads cannot span long repeats).
+
+## 0. Inputs / Outputs contract
+
+This sub-skill **refuses to run** unless the upstream artifacts are present.
+
+### Inputs (consumed)
+| Path | Source | Required? |
+| --- | --- | --- |
+| `$RUN_DIR/cleaned_R1.fastq.gz` | `read-qc-trimming` | yes |
+| `$RUN_DIR/cleaned_R2.fastq.gz` | `read-qc-trimming` | yes (paired-end) |
+
+If cleaned reads are not at those paths, stop and tell the user: *"Run the `read-qc-trimming` skill first; this skill assumes cleaned reads as input."*
+
+### Outputs (produced)
+| Path | Owner | Format | Notes |
+| --- | --- | --- | --- |
+| `$RUN_DIR/draft.fasta` | `spades.py` / `skesa` / `megahit` | FASTA | Renamed from the tool's native filename so the next phase can find it |
+| `$RUN_DIR/kraken2_report.txt` | `kraken2` | TSV | Contamination screen (Acceptance: $>95\%$ of contigs align to expected genus) |
+
+### Where to write
+- Use `$RUN_DIR` (env var) or the current working directory if `$RUN_DIR` is unset.
+- The next phase (`polishing/genome-polishing`) looks for `$RUN_DIR/draft.fasta`. **Never** write to `$RUN_DIR/..` or anywhere outside `$RUN_DIR`.
 
 ## Description
 
@@ -49,7 +71,7 @@ Short-read assemblers use the **De Bruijn Graph** paradigm:
 
 ## Prerequisites
 
-- **Environment**: Active environment with required tools.
+- **Environment**: Active environment with required tools (`pixi.toml` from the parent meta-skill).
 - **Upstream Evidence**: Cleaned reads (`.fastq.gz`) produced by the `read-qc-trimming` skill.
 
 ## Installation
@@ -78,11 +100,19 @@ pixi add spades skesa megahit kraken2
 SPAdes uses a multi-k-mer approach to resolve complex genomic regions.
 
 ```bash
+# CRITICAL: SPAdes --out-dir must exist before invocation, OR spades.py will crash
+# with "FileNotFoundError" (verified 2026-08-14, same trap as Flye — see long-read skill).
+mkdir -p "$RUN_DIR/spades_output"
+
 spades.py --careful \
           -t 8 \
-          -1 R1.fq.gz -2 R2.fq.gz \
-          -o spades_output/
-# Final assembly: spades_output/scaffolds.fasta
+          -1 "$RUN_DIR/cleaned_R1.fastq.gz" \
+          -2 "$RUN_DIR/cleaned_R2.fastq.gz" \
+          -o "$RUN_DIR/spades_output/"
+# Final assembly: $RUN_DIR/spades_output/scaffolds.fasta
+
+# Normalize the path for the next phase:
+cp "$RUN_DIR/spades_output/scaffolds.fasta" "$RUN_DIR/draft.fasta"
 ```
 
 *Note: The `--careful` flag reduces misassemblies by performing mismatch correction.*
@@ -90,14 +120,18 @@ spades.py --careful \
 #### Path B: SKESA (Fast)
 
 ```bash
-skesa --reads R1.fq.gz R2.fq.gz --cores 8 --output assembly.fasta
+skesa --reads "$RUN_DIR/cleaned_R1.fastq.gz" "$RUN_DIR/cleaned_R2.fastq.gz" \
+      --cores 8 --output "$RUN_DIR/draft.fasta"
 ```
 
 #### Path C: MEGAHIT (Large/Complex)
 
 ```bash
-megahit -1 R1.fq.gz -2 R2.fq.gz -o megahit_output/ -t 8
-# Final assembly: megahit_output/final.contigs.fa
+mkdir -p "$RUN_DIR/megahit_output"
+megahit -1 "$RUN_DIR/cleaned_R1.fastq.gz" -2 "$RUN_DIR/cleaned_R2.fastq.gz" \
+        -o "$RUN_DIR/megahit_output/" -t 8
+# Final assembly: $RUN_DIR/megahit_output/final.contigs.fa
+cp "$RUN_DIR/megahit_output/final.contigs.fa" "$RUN_DIR/draft.fasta"
 ```
 
 ### 3. Contamination Verification (The Gate)
@@ -106,9 +140,10 @@ Before proceeding to polishing (if applicable) or annotation, the assembly MUST 
 
 ```bash
 kraken2 --db /path/to/kraken2_db --threads 8 \
-        --output kraken2.report --report kraken2_summary.txt \
+        --output "$RUN_DIR/kraken2.out" \
+        --report "$RUN_DIR/kraken2_report.txt" \
         --confidence 0.05 \
-        spades_output/scaffolds.fasta
+        "$RUN_DIR/draft.fasta"
 ```
 
 - **Acceptance Criteria**: $>95\%$ of contigs must align to the expected genus.
@@ -119,17 +154,54 @@ kraken2 --db /path/to/kraken2_db --threads 8 \
 - **N50**: Use as a rough proxy for assembly quality (higher is better). For a typical bacterial genome, an N50 of $>50,000$ bp is reasonable.
 - **Misassemblies**: SPAdes `--careful` mitigates this; check QUAST for misassembly metrics.
 
-## Troubleshooting
+## Troubleshooting — Signature library
 
-| Symptom                              | Likely Cause                                                  | Recommended Action                                                            |
-|:------------------------------------ |:-------------------------------------------------------------- |:----------------------------------------------------------------------------- |
-| **Very high number of contigs ($>500$)** | Low coverage or poor-quality reads.                          | Re-evaluate upstream QC; ensure coverage is $>30\times$.                       |
-| **Assembly length much larger than expected** | Contamination from another organism.                      | Run `Kraken2` and filter out contaminating contigs.                            |
-| **Assembly length much smaller than expected** | Aggressive trimming or failed assembly.                     | Reduce QC stringency; check for adapter contamination.                         |
-| **Many misassemblies reported by QUAST** | Repetitive regions or heterozygous sites (if not haploid). | Use `--careful` mode (SPAdes); consider downsampling or hybrid assembly.       |
+When assembly fails, match the failure against these patterns. **Always** read the actual error before concluding — never pattern-match blindly.
+
+| Signature in stderr / log | Likely cause | Suggested fix |
+| --- | --- | --- |
+| `spades.py: error: argument --out-dir: ... does not exist` | `--out-dir` parent directory missing | `mkdir -p` first (verified 2026-08-14, same trap as Flye). |
+| `IO Error: Unable to read` followed by gz/bz2 error | Corrupted gzipped FASTQ | Re-run `read-qc-trimming`; verify with `seqkit stats`. |
+| `Killed` (after long runtime, exit code 137) | OOM (SPAdes on huge input) | Subsample reads to target $50\times$ coverage with `seqkit sample`; or switch to `SKESA` (lower memory). |
+| `SPAdes: WARN: Read error correction was skipped due to lack of memory` | Inadequate memory budget | Bump pixi env memory or switch to `--careful` off; reduce `-t`. |
+| `SKESA: out of memory` (rare) | Pathological coverage | Subsample reads with `seqkit sample -p 0.5`. |
+| `MEGAHIT: ERROR: empty input` | Wrong path or empty FASTQ | Verify cleaned reads exist and are non-empty: `zcat R1.fq.gz \| head`. |
+| Kraken2: $>5\%$ contigs assigned to unexpected genus | Contamination in input DNA or library prep issue | Filter contaminating contigs; if pervasive, re-extract DNA or re-prep library. |
+| Very high contig count ($>500$) | Low coverage or poor-quality reads | Re-evaluate upstream QC; ensure coverage is $>30\times$. |
+| Assembly length much larger than expected | Contamination from another organism | Run `Kraken2` and filter out contaminating contigs. |
+| Assembly length much smaller than expected | Aggressive trimming or failed assembly | Reduce QC stringency; check for adapter contamination. |
+| Many misassemblies reported by QUAST | Repetitive regions or heterozygous sites (if not haploid) | Use `--careful` mode (SPAdes); consider downsampling or hybrid assembly. |
+| `Kraken2 database not found` | DB path missing or `KRAKEN2_DB_PATH` env var unset | Set `KRAKEN2_DB_PATH`; download with `kraken2-build --download-taxonomy`. |
+| `Kraken2 database too large to download` | Limited disk space | Use a smaller database (e.g. `minikraken2`) or `centrifuge` instead. |
 
 ## Verification
 
-- [ ] `scaffolds.fasta` or `assembly.fasta` exists.
+- [ ] `$RUN_DIR/draft.fasta` exists.
 - [ ] The total assembly length is approximately equal to the expected genome size of the species.
-- [ ] `Kraken2` report confirms the sample matches the expected organism.
+- [ ] `Kraken2` report (`$RUN_DIR/kraken2_report.txt`) confirms the sample matches the expected organism.
+
+## Output contract
+
+This skill produces:
+
+- `$RUN_DIR/draft.fasta` (renamed from the tool's native output)
+- `$RUN_DIR/kraken2_report.txt` (contamination screen)
+
+It does **not** produce a `report.md`. The QC verdict is generated by `validation/assembly-qc`, which runs after polishing.
+
+## What NOT to do
+
+- Do **not** run SPAdes on raw reads — always go through `read-qc-trimming` first.
+- Do **not** skip the `mkdir -p` before `--out-dir` — both `spades.py` and `flye` will crash silently on a missing parent dir.
+- Do **not** run SPAdes without `--careful` on a bacterial isolate — `--careful` adds mismatch correction and is the standard for isolate genomes.
+- Do **not** trust a "successful" assembly that has $>5\%$ Kraken2 contamination at the genus level. That is a real failure, not a soft warning.
+- Do **not** write the FASTA to a tool-default path (`./scaffolds.fasta`, `./final.contigs.fa`) and leave it there. Always copy/rename to `$RUN_DIR/draft.fasta` so the next phase can find it.
+- Do **not** invoke `polishing/genome-polishing` on a short-read-only assembly. Polishing offers minimal benefit and can introduce regressions (see polishing skill §When to Use).
+
+## Handoff
+
+After this skill writes `$RUN_DIR/draft.fasta`:
+
+- If long-read data is also available → invoke `assembly/hybrid-assembly` (which can take both).
+- Otherwise → invoke `polishing/genome-polishing` *only if* you also have short reads and want to do conservative short-read polishing on a hybrid context. For short-read-only, skip polishing and go straight to `validation/assembly-qc`.
+- Either way, the agent should say: *"Draft assembly written to `$RUN_DIR/draft.fasta`. Handing off to `<next-skill>`."*

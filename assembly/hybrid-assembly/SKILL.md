@@ -1,8 +1,8 @@
 ---
 name: hybrid-assembly
-description: Combine short and long reads to assemble high-fidelity, complete bacterial genomes. This skill implements both Unicycler (short-read first) and Dragonflye (long-read first) strategies to resolve repeats and close gaps.
-version: 4
-updated: "2026-08-09"
+description: Combine short and long reads to assemble high-fidelity, complete bacterial genomes. This skill implements both Unicycler (short-read first) and Dragonflye (long-read first) strategies to resolve repeats and close gaps. Builds on the upstream read-qc-trimming skill.
+version: 5
+updated: "2026-08-14"
 triggers:
   - "hybrid assembly"
   - "combine short and long reads"
@@ -17,7 +17,7 @@ triggers:
 ## Audience
 
 This skill serves two purposes:
-- **AI Agents**: Triggered by phrases like *"hybrid assembly"* or *"combine short and long reads"*. Must execute the strategy selection and verification steps below.
+- **AI Agents**: Triggered by phrases like *"hybrid assembly"* or *"combine short and long reads"*. Must select Unicycler or Dragonflye based on the user's data quality profile.
 - **Human Users**: Provides conceptual background, decision rationale, and troubleshooting guidance.
 
 ## When to Use This Skill
@@ -30,6 +30,25 @@ Use this skill if:
 
 Do NOT use this skill if:
 - You only have one read type (use `short-read-assembly` or `long-read-assembly` instead).
+
+## 0. Inputs / Outputs contract
+
+This sub-skill **refuses to run** unless the upstream artifacts are present.
+
+### Inputs (consumed)
+| Path | Source | Required? |
+| --- | --- | --- |
+| `$RUN_DIR/cleaned_R1.fastq.gz` | `read-qc-trimming` | yes |
+| `$RUN_DIR/cleaned_R2.fastq.gz` | `read-qc-trimming` | yes |
+| `$RUN_DIR/cleaned_long.fastq.gz` | `read-qc-trimming` | yes |
+
+### Outputs (produced)
+| Path | Owner | Format | Notes |
+| --- | --- | --- | --- |
+| `$RUN_DIR/draft.fasta` | `Unicycler` / `Dragonflye` / `Hybracter` | FASTA | Renamed from tool-native filename. Closed (circular) contigs expected. |
+
+### Where to write
+- Use `$RUN_DIR` (env var) or the current working directory if `$RUN_DIR` is unset.
 
 ## Description
 
@@ -48,18 +67,18 @@ Hybrid assembly combines the strengths of both technologies:
 ## Prerequisites
 
 - **Environment**: Active environment with required tools.
-- **Upstream Evidence**: 
+- **Upstream Evidence**:
   - Cleaned short reads (`.fastq.gz`) produced by the `read-qc-trimming` skill.
   - Cleaned long reads (`.fastq.gz`) produced by the `read-qc-trimming` skill.
 - **Required Tools**:
-  - **Assembly**: `Unicycler` (Short-read first), `Dragonflye` (Long-read first).
+  - **Assembly**: `Unicycler` (Short-read first), `Dragonflye` (Long-read first), `Hybracter` (Automated modern).
 
 ## Installation
 
 ```bash
 pixi project channel add conda-forge
 pixi project channel add bioconda
-pixi add unicycler dragonflye spades flye medaka pypolish pypolca
+pixi add unicycler dragonflye spades flye medaka pypolish pypolca hybracter
 ```
 
 ## Procedure
@@ -78,10 +97,14 @@ pixi add unicycler dragonflye spades flye medaka pypolish pypolca
 Unicycler is the most widely used hybrid assembler. It builds an SPAdes assembly graph, then bridges contigs using long reads.
 
 ```bash
-unicycler -1 R1.fq.gz -2 R2.fq.gz \
-          -l long_reads.fastq.gz \
-          -o unicycler_output/ \
+mkdir -p "$RUN_DIR/unicycler_output"
+unicycler -1 "$RUN_DIR/cleaned_R1.fastq.gz" \
+          -2 "$RUN_DIR/cleaned_R2.fastq.gz" \
+          -l "$RUN_DIR/cleaned_long.fastq.gz" \
+          -o "$RUN_DIR/unicycler_output/" \
           -t 8
+# Final result: $RUN_DIR/unicycler_output/assembly.fasta
+cp "$RUN_DIR/unicycler_output/assembly.fasta" "$RUN_DIR/draft.fasta"
 ```
 *Key Flags:*
 - `-l`: Long reads (FastA/FastQ, gzipped supported).
@@ -91,32 +114,77 @@ unicycler -1 R1.fq.gz -2 R2.fq.gz \
 Dragonflye wraps Flye (or other long-read assemblers) and applies short-read polishing.
 
 ```bash
-dragonflye --reads long_reads.fastq.gz \
-           --R1 R1.fq.gz --R2 R2.fq.gz \
-           --outdir dragonflye_out/ \
+mkdir -p "$RUN_DIR/dragonflye_out"
+dragonflye --reads "$RUN_DIR/cleaned_long.fastq.gz" \
+           --R1 "$RUN_DIR/cleaned_R1.fastq.gz" \
+           --R2 "$RUN_DIR/cleaned_R2.fastq.gz" \
+           --outdir "$RUN_DIR/dragonflye_out/" \
            --assembler flye \
            --polish-rounds 3 \
            --threads 8
+cp "$RUN_DIR/dragonflye_out/assembly.fasta" "$RUN_DIR/draft.fasta"
+```
+
+#### Path C: Hybracter (Automated Modern)
+```bash
+mkdir -p "$RUN_DIR/hybracter_out"
+hybracter hybrid --reads-long "$RUN_DIR/cleaned_long.fastq.gz" \
+                 --reads-short-r1 "$RUN_DIR/cleaned_R1.fastq.gz" \
+                 --reads-short-r2 "$RUN_DIR/cleaned_R2.fastq.gz" \
+                 --output "$RUN_DIR/hybracter_out/"
+cp "$RUN_DIR/hybracter_out/finished_genomes/*.fasta" "$RUN_DIR/draft.fasta"
 ```
 
 ## Interpretation Guidelines
 
-- **Closure**: Check for circular contigs. Unicycler and Dragonflye both attempt to circularize the genome.
+- **Closure**: Check for circular contigs. Unicycler, Dragonflye, and Hybracter all attempt to circularize the genome.
 - **Consistency**: Ensure the total genome size matches the expected size for the organism.
 - **Plasmids**: Pay special attention to plasmid reconstruction. Unicycler excels at separating plasmids with similar sequences.
 
-## Troubleshooting
+## Troubleshooting — Signature library
 
-| Symptom                                                | Likely Cause                                                       | Recommended Action                                                       |
-|:------------------------------------------------------ |:------------------------------------------------------------------ |:------------------------------------------------------------------------ |
-| **Unicycler runs very slowly**                          | Low short-read coverage or excessive read count.                    | Subsample short reads to $50\times$ coverage; reduce thread count if memory-bound. |
-| **Plasmids not circularized**                          | Insufficient long-read coverage of plasmid; plasmid loss.           | Increase long-read depth; check for coverage uniformity.                 |
-| **Dragonflye produces fragmented assembly**             | Poor-quality long reads or insufficient coverage.                  | Use `Filtlong` to filter low-quality reads; increase sequencing depth.    |
-| **Misassemblies at repeat boundaries**                  | Long-read errors or incorrect assembler parameters.                | Try the alternative paradigm (Unicycler vs. Dragonflye); increase coverage. |
+| Signature in stderr / log | Likely cause | Suggested fix |
+| --- | --- | --- |
+| `Unicycler: no SPAdes output found` | SPAdes crashed (often OOM) | Reduce `-t` (threads) or subsample short reads; switch to `Dragonflye` (long-read first). |
+| Unicycler runs very slowly | Low short-read coverage or excessive read count | Subsample short reads to $50\times$ coverage; reduce thread count if memory-bound. |
+| `Unicycler: WARNING: 0 long reads passed filter` | Long-read length/quality filter too strict | Verify cleaned long reads: `seqkit stats cleaned_long.fastq.gz`. Re-run `read-qc-trimming` with relaxed filter. |
+| Plasmids not circularized | Insufficient long-read coverage of plasmid; plasmid loss | Increase long-read depth; check for coverage uniformity. |
+| Dragonflye produces fragmented assembly | Poor-quality long reads or insufficient coverage | Use `Filtlong` to filter low-quality reads; increase sequencing depth. |
+| `Dragonflye: Racon not found` | pixi env missing `racon` | `pixi add racon`. |
+| `Hybracter: cannot find bakta_db` | Bakta DB path env var unset | `export BAKTA_DB=/path/to/db` or pass `--bakta-db`. |
+| `Hybracter: long-read subsampling failed` | Insufficient long-read coverage | Increase long-read input depth. |
+| Misassemblies at repeat boundaries | Long-read errors or incorrect assembler parameters | Try the alternative paradigm (Unicycler vs. Dragonflye); increase coverage. |
+| `Killed` (any tool, exit 137) | OOM | Subsample reads; switch to a less memory-hungry assembler; reduce threads. |
 
 ## Verification
 
-- [ ] `assembly.fasta` exists in the output directory.
+- [ ] `$RUN_DIR/draft.fasta` exists.
 - [ ] The assembly is validated for circularity where applicable (e.g., via Bandage or QUAST).
 - [ ] Total assembly length matches the target species size.
 - [ ] Plasmids are fully resolved or documented if fragmented.
+
+## Output contract
+
+This skill produces:
+
+- `$RUN_DIR/draft.fasta` (renamed from the tool's native output)
+
+It does **not** produce a `report.md`. The QC verdict is generated by `validation/assembly-qc` after polishing.
+
+## What NOT to do
+
+- Do **not** invoke this skill unless you have **both** short AND long reads. If you only have one, use `short-read-assembly` or `long-read-assembly` instead.
+- Do **not** write the FASTA to a tool-default path. Always copy/rename to `$RUN_DIR/draft.fasta`.
+- Do **not** run Unicycler with very high short-read coverage ($>1000\times$) without first subsampling — Unicycler's SPAdes step is memory-hungry.
+- Do **not** skip the `mkdir -p` step before any tool's `--out-dir` (Unicycler, Dragonflye, Hybracter) — same Flye/SPAdes trap.
+- Do **not** choose between Unicycler and Dragonflye without checking long-read quality first. If long reads are low-coverage ($<20\times$), Unicycler (short-read first) outperforms. If long reads are high-quality ($>50\times$, high Q-score), Dragonflye (long-read first) wins.
+
+## Handoff
+
+After this skill writes `$RUN_DIR/draft.fasta`:
+
+- For Unicycler output → optional light polishing, then straight to `validation/assembly-qc`. Unicycler already incorporates short-read polishing internally.
+- For Dragonflye / Hybracter output → mandatory `polishing/genome-polishing` (Dragonflye already runs Medaka + Pypolish, so verify its output before adding more polishing rounds).
+- For Hybracter with `--skip-polish` → mandatory `polishing/genome-polishing`.
+
+Say: *"Hybrid assembly written to `$RUN_DIR/draft.fasta`. Handing off to `<polishing or qc>`."*
