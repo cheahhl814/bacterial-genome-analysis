@@ -1,6 +1,6 @@
 # Bacterial Genome Analysis Skills
 
-> **v5.0.1.** Added a new `preflight` sub-skill (Phase 0) that gates the assembly phase on a `GO` / `GO-WITH-WARNINGS` / `NO-GO` verdict. v5 structure (orchestrator + 4 specialists) is unchanged. Pattern matches `bettamt-preflight` from [BettaMt-agents](https://github.com/cheahhl814/BettaMt-agents).
+> **v5.0.2.** Added the **Ask-User Stop Points** pattern (SP0–SP19), adopted from `Betta-WGS-agent`. Each sub-skill with decision ambiguity now has explicit stop points that fire only when evidence is ambiguous; the format is **Evidence + Recommend + 2–4 options**. v5.0.1 structure (preflight + 4 phases) is unchanged.
 
 This meta-skill orchestrates the end-to-end reconstruction of bacterial genomes, transforming cleaned sequencing reads into a validated, polished, and annotated genomic sequence. It implements the **"Finished Genome"** paradigm, ensuring that assembly errors are corrected before biological features are labeled.
 
@@ -26,7 +26,25 @@ The analysis follows a strict **5-phase evidence chain** (building upon upstream
 
 ## v5 design — what changed
 
-### v5.0.1 (current)
+### v5.0.2 (current)
+
+- **Ask-User Stop Points** added across the master orchestrator and 5 sub-skills (19 total: SP0 + SP1–SP19).
+- Each stop point uses the **Evidence + Recommend + Options** format adopted from `Betta-WGS-agent` (`betta-preflight`'s "validate with user or via command line inspection").
+- Each stop point fires **only when the evidence is ambiguous**; otherwise the agent auto-picks the default and proceeds silently.
+- Pattern is identical across all 5 sub-skills: `## 0.5 Ask-User Stop Points` section with one table per stop point.
+- Master orchestrator adds §0.5 with **SP0** (entry-stage ambiguity).
+
+| Sub-skill | Stop points | Trigger categories |
+|---|---|---|
+| Master orchestrator | SP0 | stage ambiguity |
+| `preflight/genome-input-preflight` | SP1–SP7 | platform, path, expected size, organism, tools, contamination, disk |
+| `assembly/short-read-assembly` | SP8, SP9 | coverage, memory |
+| `assembly/long-read-assembly` | SP10, SP11, SP12 | coverage, RAM, HiFi flag |
+| `assembly/hybrid-assembly` | SP13, SP14 | short coverage + Unicycler, long coverage |
+| `polishing/genome-polishing` | SP15, SP16, SP17 | HiFi optional, short-only, Medaka model |
+| `annotation/genome-annotation` | SP18, SP19 | Bakta DB missing, NCBI submission intent |
+
+### v5.0.1 (preflight)
 
 - New **Phase 0 Preflight** sub-skill at `preflight/genome-input-preflight/` — runs `seqkit stats`, `minimap2` downsampled coverage, `kraken2` read-level screen, disk / resource checks, and tool availability. Writes `params.json` (machine contract) and `preflight.md` (audit trail) with overall verdict `GO` / `GO-WITH-WARNINGS` / `NO-GO`.
 - The **three assembly sub-skills refuse to run** without `preflight.md` ≥ `GO-WITH-WARNINGS`.

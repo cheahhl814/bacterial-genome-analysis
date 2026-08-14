@@ -1,7 +1,7 @@
 ---
 name: short-read-assembly
-description: Assemble bacterial genomes from short-read sequencing data (Illumina). This skill focuses on producing the most contiguous draft possible from paired-end reads, utilizing De Bruijn graph assemblers and integrating quality control to ensure data integrity before assembly. Builds on the upstream read-qc-trimming skill.
-version: 5
+description: Assemble bacterial genomes from short-read sequencing data (Illumina). This skill focuses on producing the most contiguous draft possible from paired-end reads, utilizing De Bruijn graph assemblers and integrating quality control to ensure data integrity before assembly. Builds on the upstream read-qc-trimming skill. Has explicit ask-user stop points (SP8, SP9) that fire only when evidence is ambiguous.
+version: 5.0.2
 updated: "2026-08-14"
 triggers:
   - "assemble short reads"
@@ -58,6 +58,26 @@ If `preflight.md` is missing or overall verdict is `NO-GO`, stop and tell the us
 ### Where to write
 - Use `$RUN_DIR` (env var) or the current working directory if `$RUN_DIR` is unset.
 - The next phase (`polishing/genome-polishing`) looks for `$RUN_DIR/draft.fasta`. **Never** write to `$RUN_DIR/..` or anywhere outside `$RUN_DIR`.
+
+## 0.5 Ask-User Stop Points
+
+This sub-skill has **2 stop points** (SP8, SP9). Each fires only when the evidence is ambiguous. If the evidence is unambiguous, the agent auto-picks the default and proceeds silently.
+
+### SP8 — Coverage is marginal (< 30× for Illumina)
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` `coverage.estimated_x` < 30 for Illumina | MIMAG threshold is 30×; below this is `NO-GO` territory | Ask: "Illumina coverage is `<X>×` — MIMAG recommends ≥ 30×. Pick: (A) continue anyway (expect fragmented assembly), (B) re-sequence to increase coverage (recommended), (C) abort" |
+
+**Auto-pick when**: coverage ≥ 30×. No ask.
+
+### SP9 — Memory insufficient for the recommended assembler
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` `recommendations.assembler = spades` AND host RAM < 16 GB | SPAdes is memory-hungry | Ask: "Recommended assembler is SPAdes, but the host has only `<X> GB` RAM. SPAdes typically OOMs below 16 GB. Pick: (A) switch to SKESA (lower memory), (B) subsample reads to reduce peak memory, (C) proceed with SPAdes anyway and accept OOM risk, (D) abort" |
+
+**Auto-pick when**: RAM ≥ 16 GB OR user explicitly requested SPAdes in the brief. Default to "proceed if preflight already approved" (preflight would have flagged this; trust its verdict).
 
 ## Description
 

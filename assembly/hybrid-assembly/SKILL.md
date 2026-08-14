@@ -1,7 +1,7 @@
 ---
 name: hybrid-assembly
-description: Combine short and long reads to assemble high-fidelity, complete bacterial genomes. This skill implements both Unicycler (short-read first) and Dragonflye (long-read first) strategies to resolve repeats and close gaps. Builds on the upstream read-qc-trimming skill.
-version: 5
+description: Combine short and long reads to assemble high-fidelity, complete bacterial genomes. This skill implements both Unicycler (short-read first) and Dragonflye (long-read first) strategies to resolve repeats and close gaps. Builds on the upstream read-qc-trimming skill. Has explicit ask-user stop points (SP13, SP14) that fire only when evidence is ambiguous.
+version: 5.0.2
 updated: "2026-08-14"
 triggers:
   - "hybrid assembly"
@@ -53,6 +53,26 @@ If `preflight.md` is missing or overall verdict is `NO-GO`, stop and tell the us
 
 ### Where to write
 - Use `$RUN_DIR` (env var) or the current working directory if `$RUN_DIR` is unset.
+
+## 0.5 Ask-User Stop Points
+
+This sub-skill has **2 stop points** (SP13, SP14). Each fires only when the evidence is ambiguous. If the evidence is unambiguous, the agent auto-picks the default and proceeds silently.
+
+### SP13 — Short-read coverage marginal + Unicycler chosen
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` `recommendations.assembler = unicycler` AND Illumina coverage < 50× | Unicycler's SPAdes step struggles with low short-read coverage | Ask: "Recommended assembler is Unicycler, but Illumina coverage is only `<X>×`. Unicycler needs ≥ 50× short reads for the SPAdes backbone. Pick: (A) proceed with Unicycler anyway (expect fragmented), (B) switch to Dragonflye (long-read first; works with low short coverage), (C) switch to Hybracter (modern automated wrapper), (D) abort" |
+
+**Auto-pick when**: Illumina coverage ≥ 50×. Default: trust preflight.
+
+### SP14 — Long-read coverage very low
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` long-read coverage < 20× | Hybrid assembly needs enough long reads to bridge repeats | Ask: "Long-read coverage is only `<X>×` — hybrid assembly needs ≥ 20× to reliably bridge repeats. Pick: (A) proceed with hybrid anyway (Unicycler may still work), (B) fall back to short-read-only assembly, (C) re-sequence to increase long-read depth, (D) abort" |
+
+**Auto-pick when**: long-read coverage ≥ 20×. Default: trust preflight.
 
 ## Description
 

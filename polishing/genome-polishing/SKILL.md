@@ -1,7 +1,7 @@
 ---
 name: genome-polishing
-description: Correct base-level errors in bacterial genome assemblies. This skill implements a multi-stage polishing sequence: long-read polishing (Medaka/NanoPolish) followed by short-read polishing (Pypolish/Pypolca) to achieve "perfect" nucleotide accuracy.
-version: 5
+description: Correct base-level errors in bacterial genome assemblies. This skill implements a multi-stage polishing sequence: long-read polishing (Medaka/NanoPolish) followed by short-read polishing (Pypolish/Pypolca) to achieve "perfect" nucleotide accuracy. Has explicit ask-user stop points (SP15, SP16, SP17) that fire only when evidence is ambiguous.
+version: 5.0.2
 updated: "2026-08-14"
 triggers:
   - "polish genome"
@@ -55,6 +55,34 @@ This sub-skill **refuses to run** unless the upstream artifacts are present.
 
 ### Where to write
 - Use `$RUN_DIR` (env var) or the current working directory if `$RUN_DIR` is unset.
+
+## 0.5 Ask-User Stop Points
+
+This sub-skill has **3 stop points** (SP15, SP16, SP17). Each fires only when the evidence is ambiguous. If the evidence is unambiguous, the agent auto-picks the default and proceeds silently.
+
+### SP15 — HiFi assembly, polishing is optional
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` `platform = pacbio-hifi` | HiFi reads are already > 99.9% accurate | Ask: "Detected HiFi reads. HiFi assemblies are already > 99.9% accurate; polishing offers marginal benefit and risks over-correction. Pick: (A) polish anyway with 1 round of Pypolca (mild cleanup), (B) skip polishing (recommended for HiFi), (C) abort" |
+
+**Auto-pick when**: ONT or hybrid platform. No ask (polishing is mandatory there).
+
+### SP16 — Short-read-only assembly
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` `platform = illumina` AND no long reads available | Polishing offers minimal benefit for short-read-only; can introduce over-correction | Ask: "Detected short-read-only assembly. Polishing offers minimal benefit and may introduce over-correction. Pick: (A) skip polishing (recommended), (B) run conservative Pypolca anyway, (C) abort" |
+
+**Auto-pick when**: long-read or hybrid data present (polishing mandatory). No ask.
+
+### SP17 — Medaka model mismatch (R10.4.1 chemistry)
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `medaka_consensus -m` flag NOT set AND platform is ONT R10.4.1 (detected from read file metadata or user-provided chemistry) | Default Medaka model may be wrong for newer chemistry | Ask: "Detected ONT R10.4.1 chemistry. Default Medaka model may not match. Pick: (A) install latest Medaka and let it autodetect (recommended), (B) specify model manually (`-m r1041_e82_400bps_hac_v4.2.0`), (C) proceed with whatever the current default is, (D) abort" |
+
+**Auto-pick when**: Medaka version is recent AND model flag is already set OR user said "use default". No ask.
 
 ## Description
 

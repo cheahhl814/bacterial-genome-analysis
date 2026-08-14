@@ -1,7 +1,7 @@
 ---
 name: long-read-assembly
-description: Assemble bacterial genomes from long-read sequencing data (ONT/PacBio). This skill implements the consensus assembly paradigm to resolve repeats and produce near-complete circular chromosomes and plasmids, integrating quality filtering and depth downsampling. Builds on the upstream read-qc-trimming skill.
-version: 5
+description: Assemble bacterial genomes from long-read sequencing data (ONT/PacBio). This skill implements the consensus assembly paradigm to resolve repeats and produce near-complete circular chromosomes and plasmids, integrating quality filtering and depth downsampling. Builds on the upstream read-qc-trimming skill. Has explicit ask-user stop points (SP10, SP11, SP12) that fire only when evidence is ambiguous.
+version: 5.0.2
 updated: "2026-08-14"
 triggers:
   - "assemble long reads"
@@ -66,6 +66,35 @@ If `preflight.md` is missing or overall verdict is `NO-GO`, stop and tell the us
 
 - Use `$RUN_DIR` (env var) or the current working directory if `$RUN_DIR` is unset.
 - The next phase (`polishing/genome-polishing`) looks for `$RUN_DIR/draft.fasta`.
+
+## 0.5 Ask-User Stop Points
+
+This sub-skill has **3 stop points** (SP10, SP11, SP12). Each fires only when the evidence is ambiguous. If the evidence is unambiguous, the agent auto-picks the default and proceeds silently.
+
+### SP10 — Coverage is marginal
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` `coverage.estimated_x` < 20 for ONT | Below MIMAG minimum | Ask: "ONT coverage is `<X>×` — recommended ≥ 30× for closed genomes. Pick: (A) continue anyway (expect fragmented assembly), (B) re-sequence to increase coverage (recommended), (C) abort" |
+| `params.json` `coverage.estimated_x` < 15 for HiFi | HiFi needs less depth due to high per-base accuracy | No ask — proceed silently (15× is acceptable for HiFi) |
+
+**Auto-pick when**: ONT ≥ 30× OR HiFi ≥ 15×. No ask.
+
+### SP11 — RAM insufficient for Flye
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` `recommendations.assembler = flye` AND host RAM < 24 GB | Flye needs ≥ 24 GB for typical bacteria | Ask: "Recommended assembler is Flye, but the host has only `<X> GB` RAM. Pick: (A) switch to Raven (lower memory, fast), (B) switch to Miniasm+Racon (very low memory, requires more polishing), (C) proceed with Flye anyway and accept OOM risk, (D) abort" |
+
+**Auto-pick when**: RAM ≥ 24 GB OR user explicitly requested Flye in the brief. Default: trust the preflight verdict.
+
+### SP12 — HiFi reads but non-HiFi params chosen
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json` `platform = pacbio-hifi` AND `recommendations.assembler = flye` AND `flye --pacbio-hifi` flag NOT set | Flye will autodetect, but explicit flag is safer | Ask: "Detected HiFi reads but `params.json` recommends Flye without the `--pacbio-hifi` flag. Pick: (A) add `--pacbio-hifi` flag (recommended for HiFi), (B) proceed without it (Flye will autodetect), (C) abort" |
+
+**Auto-pick when**: `--pacbio-hifi` flag is already set OR platform is ONT (not HiFi). No ask.
 
 ## Description
 

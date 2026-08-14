@@ -1,7 +1,7 @@
 ---
 name: genome-input-preflight
-description: Validate bacterial genome analysis inputs (cleaned reads) and write a preflight.md audit trail + params.json platform contract. Computes evidence (read stats, coverage, contamination, disk, resource budget) and emits a GO / GO-WITH-WARNINGS / NO-GO verdict. Always run after read-qc-trimming and before any assembly sub-skill. Triggers: "preflight bacterial genome", "what params for bacterial assembly", "bacterial genome preflight", "validate my cleaned reads", "should I assemble these reads".
-version: 5.0.1
+description: Validate bacterial genome analysis inputs (cleaned reads) and write a preflight.md audit trail + params.json platform contract. Computes evidence (read stats, coverage, contamination, disk, resource budget) and emits a GO / GO-WITH-WARNINGS / NO-GO verdict. Always run after read-qc-trimming and before any assembly sub-skill. Has 7 explicit ask-user stop points (SP1–SP7) that fire only when evidence is ambiguous. Triggers: "preflight bacterial genome", "what params for bacterial assembly", "bacterial genome preflight", "validate my cleaned reads", "should I assemble these reads".
+version: 5.0.2
 updated: "2026-08-14"
 triggers:
   - "preflight bacterial genome"
@@ -59,6 +59,72 @@ Do NOT use this skill if:
 
 ### Verdict gate
 The assembly sub-skills **refuse to run** unless `$RUN_DIR/preflight.md` overall verdict is `GO` or `GO-WITH-WARNINGS`. A `NO-GO` verdict stops the pipeline.
+
+## 0.5 Ask-User Stop Points
+
+This sub-skill has **7 stop points** (SP1–SP7). Each fires only when the evidence is ambiguous. The format is **Evidence + Recommend + Options**. If the evidence is unambiguous, the agent auto-picks the default and proceeds silently.
+
+### SP1 — Platform ambiguous (no FASTQ tells us)
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| No `cleaned_R1.fastq.gz` AND no `cleaned_long.fastq.gz` AND no user-provided path | Unambiguous missing data | Hard-stop: "I don't see any cleaned reads at `$RUN_DIR/`. Please run `read-qc-trimming` first, or paste the path to your cleaned FASTQ files." |
+| User provided a single FASTQ path | Cannot infer platform from filename alone | Ask: "I see one FASTQ at `<path>`. What platform produced it? (Illumina / ONT / PacBio HiFi / PacBio CLR)" |
+
+**Auto-pick when**: cleaned reads exist and filenames are clear (`cleaned_R1.fastq.gz` + `cleaned_R2.fastq.gz` → Illumina; `cleaned_long.fastq.gz` → ONT/PacBio).
+
+### SP2 — Short AND long reads present (path choice)
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `cleaned_R{1,2}.fastq.gz` AND `cleaned_long.fastq.gz` all present | Real ambiguity | Ask: "I see both short reads (`cleaned_R1/2.fastq.gz`) and long reads (`cleaned_long.fastq.gz`). Which assembly path do you want? (A) short-read-only, (B) long-read-only, (C) hybrid (Unicycler/Dragonflye)" |
+
+**Auto-pick when**: only one platform's reads are present. Default: hybrid IF both have sufficient coverage (Illumina ≥ 50× AND long-read ≥ 30×).
+
+### SP3 — Expected genome size missing
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| User did not provide `expected_genome_size_mb` | Coverage estimate is approximate | Ask: "I don't know the expected genome size. Pick one: (A) E. coli / typical Enterobacteriaceae (~4.6 Mbp), (B) Bacillus / Firmicutes (~4.2 Mbp), (C) Mycobacterium (~4.4 Mbp), (D) I'll provide it now" |
+
+**Auto-pick when**: user provides a size in the initial brief. Default is 4.5 Mbp with a warning if the user doesn't know.
+
+### SP4 — Organism / genus missing
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| User did not provide organism | Contamination screen has no "expected genus" anchor | Ask: "I don't know the expected organism. Pick one: (A) I'll provide it now, (B) infer from Kraken2 top hit (but then the contamination screen is less reliable), (C) skip organism validation entirely" |
+
+**Auto-pick when**: user provides organism. Default: use Kraken2 top hit + warn "this is circular — if the assembly is contaminated, Kraken2 will misleadingly confirm the contaminant."
+
+### SP5 — Tool missing or trap fires
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| Any required tool missing | `which` returns nothing | Ask: "Tool `<X>` is missing from the pixi env. Pick: (A) install it now (`pixi add <X>`), (B) skip this phase (no go), (C) abort" |
+| `checkm-genome` triggers `pkg_resources` ModuleNotFoundError | Python 3.12+ setuptools trap | Ask: "CheckM is broken because of the Python 3.12 / setuptools ≥ 81 incompatibility. Pick: (A) I can fix it (run `pixi add 'setuptools<81'`), (B) use a different validator (BUSCO + QUAST only), (C) abort" |
+
+**Auto-pick when**: all tools present and passing the trap check. No ask.
+
+### SP6 — Contamination > 5% off-genus
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| Kraken2 top-pct for expected genus < 95% | Real contamination signal | Ask: "Kraken2 reports only `<X>%` of reads match the expected genus (target ≥ 95%). This is a real contamination signal. Pick: (A) continue with `GO-WITH-WARNINGS` — I'll document the contamination in `preflight.md`, (B) re-extract DNA / re-prep library (recommended), (C) abort" |
+
+**Auto-pick when**: top-pct ≥ 95% (clean) OR 80–95% (still GO-WITH-WARNINGS — one ask is enough). For <50% (NO-GO), ask instead of auto-stopping — the user may want to override.
+
+### SP7 — Disk space < 20 GB
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| Free space < 20 GB | NO-GO territory | Ask: "Only `<X> GB` free on `$RUN_DIR`. Bacterial assemblies need ≥ 50 GB. Pick: (A) free up disk by clearing intermediate files, (B) move `$RUN_DIR` to a larger disk, (C) abort" |
+
+**Auto-pick when**: free space ≥ 50 GB. Warning auto-set for 20–50 GB (no ask).
+
+### Operating rule
+
+> **Auto-pick when the evidence is unambiguous; ask when the agent genuinely cannot decide.** When asking, present the evidence first, then the recommendation, then 2–4 concrete options. Do not ask "what do you want?" — ask "I see X, recommend Y, which one of A/B/C?"
 
 ## Description
 

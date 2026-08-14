@@ -1,7 +1,7 @@
 ---
 name: genome-annotation
-description: Assign biological functions to the features of a bacterial genome assembly. This skill transforms a validated FASTA assembly into a set of standard annotation files (GFF, GBK, FAA), supporting modern tools like Bakta and DFAST. Always run after assembly-qc reports PASS.
-version: 5
+description: Assign biological functions to the features of a bacterial genome assembly. This skill transforms a validated FASTA assembly into a set of standard annotation files (GFF, GBK, FAA), supporting modern tools like Bakta and DFAST. Always run after assembly-qc reports PASS. Has explicit ask-user stop points (SP18, SP19) that fire only when evidence is ambiguous.
+version: 5.0.2
 updated: "2026-08-14"
 triggers:
   - "annotate genome"
@@ -18,18 +18,21 @@ triggers:
 ## Audience
 
 This skill serves two purposes:
+
 - **AI Agents**: Triggered by phrases like *"annotate genome"* or *"find genes in assembly"*. Must confirm `$RUN_DIR/report.md` overall verdict is `PASS` before proceeding.
 - **Human Users**: Provides conceptual background, decision rationale, and troubleshooting guidance.
 
 ## When to Use This Skill
 
 Use this skill if:
+
 - You have a **validated, polished assembly** (i.e. `$RUN_DIR/report.md` overall verdict is `PASS` or `PASS-WITH-WARNINGS`).
 - You need to identify **protein-coding genes**, **rRNAs**, **tRNAs**, or **regulatory elements**.
 - You are preparing a genome for **NCBI submission** (requires GenBank-format annotation).
 - You need input for downstream analyses (e.g., pangenome analysis with Roary, AMR gene detection).
 
 Do NOT use this skill if:
+
 - Your assembly has **not passed QC** (`$RUN_DIR/report.md` is missing or `FAIL`). Annotation will produce false results.
 - You are working with **eukaryotic** genomes (different tools and paradigms apply).
 - You only need **read-level** functional annotation (use a read-mapping approach instead).
@@ -39,24 +42,47 @@ Do NOT use this skill if:
 This sub-skill **refuses to run** unless the upstream artifacts are present AND the QC verdict is at least PASS-WITH-WARNINGS.
 
 ### Inputs (consumed)
-| Path | Source | Required? |
-| --- | --- | --- |
-| `$RUN_DIR/assembly.fasta` | `polishing/genome-polishing` | yes |
-| `$RUN_DIR/report.md` | `validation/assembly-qc` | yes (must show PASS or PASS-WITH-WARNINGS) |
+
+| Path                      | Source                       | Required?                                  |
+| ------------------------- | ---------------------------- | ------------------------------------------ |
+| `$RUN_DIR/assembly.fasta` | `polishing/genome-polishing` | yes                                        |
+| `$RUN_DIR/report.md`      | `validation/assembly-qc`     | yes (must show PASS or PASS-WITH-WARNINGS) |
 
 ### Outputs (produced)
-| Path | Owner | Format | Notes |
-| --- | --- | --- | --- |
-| `$RUN_DIR/bakta_output/<prefix>.gff3` | `Bakta` | GFF3 | Standard feature coordinates. |
-| `$RUN_DIR/bakta_output/<prefix>.gbff` | `Bakta` | GenBank flat file | NCBI-submission-ready. |
-| `$RUN_DIR/bakta_output/<prefix>.faa` | `Bakta` | FASTA amino acid | Protein sequences. |
-| `$RUN_DIR/bakta_output/<prefix>.fna` | `Bakta` | FASTA nucleotide | Coding sequences. |
-| `$RUN_DIR/bakta_output/<prefix>.json` | `Bakta` | JSON | Machine-readable annotation. |
-| `$RUN_DIR/annotation-report.md` | this skill (optional) | Markdown | Annotation QC verdict, mirrors `report.md` style. **Only written if `--annotate-qc` is requested.** |
+
+| Path                                  | Owner                 | Format            | Notes                                                                                               |
+| ------------------------------------- | --------------------- | ----------------- | --------------------------------------------------------------------------------------------------- |
+| `$RUN_DIR/bakta_output/<prefix>.gff3` | `Bakta`               | GFF3              | Standard feature coordinates.                                                                       |
+| `$RUN_DIR/bakta_output/<prefix>.gbff` | `Bakta`               | GenBank flat file | NCBI-submission-ready.                                                                              |
+| `$RUN_DIR/bakta_output/<prefix>.faa`  | `Bakta`               | FASTA amino acid  | Protein sequences.                                                                                  |
+| `$RUN_DIR/bakta_output/<prefix>.fna`  | `Bakta`               | FASTA nucleotide  | Coding sequences.                                                                                   |
+| `$RUN_DIR/bakta_output/<prefix>.json` | `Bakta`               | JSON              | Machine-readable annotation.                                                                        |
+| `$RUN_DIR/annotation-report.md`       | this skill (optional) | Markdown          | Annotation QC verdict, mirrors `report.md` style. **Only written if `--annotate-qc` is requested.** |
 
 ### Where to write
+
 - Use `$RUN_DIR` (env var) or the current working directory if `$RUN_DIR` is unset.
 - Annotation outputs go in a subdirectory `$RUN_DIR/bakta_output/` (or `prokka_output/`, etc.) — not directly in `$RUN_DIR/`, because each tool emits ~10 files.
+
+## 0.5 Ask-User Stop Points
+
+This sub-skill has **2 stop points** (SP18, SP19). Each fires only when the evidence is ambiguous. If the evidence is unambiguous, the agent auto-picks the default and proceeds silently.
+
+### SP18 — Bakta DB not installed
+
+| Trigger                                                                                        | Evidence check                            | Action                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$BAKTA_DB` env var unset AND no `bakta_db/` directory found AND no `--db` flag in params.json | Bakta requires a ~10 GB database download | Ask: "Bakta database is not installed. Pick: (A) download now (~10 GB, one-time), (B) use DFAST instead (lighter, ~2 GB DB, less comprehensive), (C) use Prokka (legacy, ships with small DB, less accurate for sORFs), (D) abort" |
+
+**Auto-pick when**: `$BAKTA_DB` is set OR user explicitly said "Bakta is configured". No ask.
+
+### SP19 — NCBI submission intent detected
+
+| Trigger                                                                                           | Evidence check                                                                  | Action                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User mentioned "NCBI submission", "GenBank submission", "BioSample", or "BioProject" in the brief | PGAP is required for NCBI submissions; Bakta + tbl2asn is a lighter alternative | Ask: "Detected NCBI submission intent. Pick: (A) use PGAP (official NCBI pipeline; heavyweight, requires metadata files), (B) use Bakta + tbl2asn (lighter, produces submission-ready .sqn file), (C) use Bakta only (not submission-ready; you'd convert later), (D) abort" |
+
+**Auto-pick when**: no submission intent mentioned. Default to Bakta (Path A).
 
 ## Description
 
@@ -71,6 +97,7 @@ Genome annotation identifies protein-coding sequences (CDS), RNAs, and other gen
 3. **Feature Detection**: Specialized tools identify specific features (e.g., ARAGORN for tRNAs, Infernal for rRNAs).
 
 **Why Bakta over Prokka?**
+
 - Bakta uses the entire **UniRef** protein database (taxonomy-independent).
 - Bakta captures **sORFs** (small open reading frames) that Prokka misses.
 - Bakta produces **dbxref-rich** annotations for better interoperability.
@@ -117,16 +144,17 @@ esac
 
 ### 1. Tool Selection
 
-| Goal                          | Recommended Tool | Why This Tool?                                                                                                                                  |
-|:----------------------------- |:---------------- |:----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Standard / High Quality**    | `Bakta`          | Next-gen replacement for Prokka. Uses UniRef database (taxonomy-independent), captures sORFs, dbxref-rich output.                              |
-| **Fast / Legacy**             | `Prokka`         | Extremely fast; standard output; widely used. Useful for quick annotations or legacy compatibility.                                              |
-| **Specialized (DFAST features)** | `DFAST`        | Lightweight; good for specific taxonomy; used in nf-core/bacass.                                                                                 |
-| **Submission Grade**          | `PGAP`           | Required for NCBI/GenBank. Most authoritative; combines ab initio prediction with homology.                                                       |
+| Goal                             | Recommended Tool | Why This Tool?                                                                                                    |
+|:-------------------------------- |:---------------- |:----------------------------------------------------------------------------------------------------------------- |
+| **Standard / High Quality**      | `Bakta`          | Next-gen replacement for Prokka. Uses UniRef database (taxonomy-independent), captures sORFs, dbxref-rich output. |
+| **Fast / Legacy**                | `Prokka`         | Extremely fast; standard output; widely used. Useful for quick annotations or legacy compatibility.               |
+| **Specialized (DFAST features)** | `DFAST`          | Lightweight; good for specific taxonomy; used in nf-core/bacass.                                                  |
+| **Submission Grade**             | `PGAP`           | Required for NCBI/GenBank. Most authoritative; combines ab initio prediction with homology.                       |
 
 ### 2. Execution
 
 #### Path A: Bakta (Recommended)
+
 Bakta uses a comprehensive UniRef-based database for superior functional annotation.
 
 ```bash
@@ -138,7 +166,9 @@ bakta --db "$BAKTA_DB" \
       --prefix sample1 \
       "$RUN_DIR/assembly.fasta"
 ```
+
 *Key Outputs:*
+
 - `$RUN_DIR/bakta_output/sample1.gff3`: General Feature Format.
 - `$RUN_DIR/bakta_output/sample1.gbff`: GenBank Flat File.
 - `$RUN_DIR/bakta_output/sample1.faa`: FASTA Amino Acid (proteins).
@@ -146,6 +176,7 @@ bakta --db "$BAKTA_DB" \
 - `$RUN_DIR/bakta_output/sample1.json`: Machine-readable annotation.
 
 #### Path B: Prokka
+
 ```bash
 mkdir -p "$RUN_DIR/prokka_output"
 prokka --outdir "$RUN_DIR/prokka_output" \
@@ -155,9 +186,11 @@ prokka --outdir "$RUN_DIR/prokka_output" \
        --species coli \
        "$RUN_DIR/assembly.fasta"
 ```
+
 *Note: Providing `--genus` and `--species` significantly speeds up Prokka.*
 
 #### Path C: DFAST
+
 ```bash
 mkdir -p "$RUN_DIR/dfast_output"
 dfast --genome "$RUN_DIR/assembly.fasta" \
@@ -167,6 +200,7 @@ dfast --genome "$RUN_DIR/assembly.fasta" \
 ```
 
 #### Path D: PGAP (NCBI Submission)
+
 ```bash
 # PGAP runs as a Docker container; invoke via the official NCBI wrapper
 pgap.py --help  # see PGAP docs for submission prep
@@ -176,6 +210,7 @@ pgap.py --help  # see PGAP docs for submission prep
 ### 3. Output Files
 
 The agent shall ensure the following files are produced:
+
 - **`.gff`/`.gff3`**: General Feature Format (coordinates and types).
 - **`.gbk`/`.gbff`**: GenBank format (full annotations including sequence).
 - **`.faa`**: FASTA Amino Acid (protein sequences).
@@ -189,20 +224,20 @@ The agent shall ensure the following files are produced:
 
 ## Troubleshooting — Signature library
 
-| Signature in stderr / log | Likely cause | Suggested fix |
-| --- | --- | --- |
-| Bakta database download fails | Network issues or disk space | Retry with `--debug`; ensure sufficient disk space ($>10$ GB). |
-| `BAKTA_DB environment variable not set` | DB path env var missing | `export BAKTA_DB=/path/to/db` or pass `--db /path/to/db`. |
-| Annotation produces very few genes ($<1000$) | Assembly is incomplete or contaminated | Re-check QC metrics in `$RUN_DIR/report.md`; ensure assembly passed completeness/contamination gates. |
-| Annotation produces too many genes ($>8000$) | Contamination or fragmented assembly | Run `Kraken2` to check for contamination; consider re-assembly. |
-| Prokka fails with "can't find genus" | No taxonomy specified for novel organism | Provide `--genus` and `--species` flags; or use `--metagenome` mode. |
-| `tbl2asn: command not found` | pixi env missing `tbl2asn` | `pixi add tbl2asn`. |
-| `PGAP submission fails` | Missing metadata or incorrect file formats | Verify input formats; check PGAP documentation for required fields. |
-| `bakta: command not found` | pixi env missing `bakta` | `pixi add bakta`. |
-| `prokka: command not found` | pixi env missing `prokka` | `pixi add prokka`. |
-| `dfast: command not found` | pixi env missing `dfast` | `pixi add dfast`. |
-| `Killed` (any tool, exit 137) | OOM | Reduce `--threads`; Bakta is the heaviest. |
-| Annotation produces no tRNAs | `BAKTA_DB` is missing the tRNA models | Re-download full Bakta DB (not just the protein subset). |
+| Signature in stderr / log                    | Likely cause                               | Suggested fix                                                                                         |
+| -------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Bakta database download fails                | Network issues or disk space               | Retry with `--debug`; ensure sufficient disk space ($>10$ GB).                                        |
+| `BAKTA_DB environment variable not set`      | DB path env var missing                    | `export BAKTA_DB=/path/to/db` or pass `--db /path/to/db`.                                             |
+| Annotation produces very few genes ($<1000$) | Assembly is incomplete or contaminated     | Re-check QC metrics in `$RUN_DIR/report.md`; ensure assembly passed completeness/contamination gates. |
+| Annotation produces too many genes ($>8000$) | Contamination or fragmented assembly       | Run `Kraken2` to check for contamination; consider re-assembly.                                       |
+| Prokka fails with "can't find genus"         | No taxonomy specified for novel organism   | Provide `--genus` and `--species` flags; or use `--metagenome` mode.                                  |
+| `tbl2asn: command not found`                 | pixi env missing `tbl2asn`                 | `pixi add tbl2asn`.                                                                                   |
+| `PGAP submission fails`                      | Missing metadata or incorrect file formats | Verify input formats; check PGAP documentation for required fields.                                   |
+| `bakta: command not found`                   | pixi env missing `bakta`                   | `pixi add bakta`.                                                                                     |
+| `prokka: command not found`                  | pixi env missing `prokka`                  | `pixi add prokka`.                                                                                    |
+| `dfast: command not found`                   | pixi env missing `dfast`                   | `pixi add dfast`.                                                                                     |
+| `Killed` (any tool, exit 137)                | OOM                                        | Reduce `--threads`; Bakta is the heaviest.                                                            |
+| Annotation produces no tRNAs                 | `BAKTA_DB` is missing the tRNA models      | Re-download full Bakta DB (not just the protein subset).                                              |
 
 ## Verification
 

@@ -1,7 +1,7 @@
 ---
 name: bacterial-genome-analysis
-description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill.
-version: 5.0.1
+description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill. Pairs with the bettamt-style ask-user stop point pattern from Betta-WGS-agent.
+version: 5.0.2
 updated: "2026-08-14"
 triggers:
   - "assemble bacterial genome"
@@ -16,7 +16,7 @@ triggers:
 
 # Meta-Skill: bacterial-genome-analysis
 
-> **v5.0.1 redesign.** This skill is now a thin orchestrator plus five specialists (preflight + four phases). It follows the agentic skill pattern documented at `agentskills.io/specification` and the `BettaMt-agents` reference layout: every sub-skill has an explicit input/output contract, a single responsibility, and a hand-off to the next phase. The pipeline architecture gained a **Phase 0 Preflight** gate in v5.0.1 — assembly sub-skills refuse to run without `preflight.md` ≥ GO-WITH-WARNINGS.
+> **v5.0.2 redesign.** Added the **Ask-User Stop Points** pattern, adopted from `Betta-WGS-agent` (betta-preflight's "validate with user or via command line inspection"). Every sub-skill with decision ambiguity now has explicit **SP1–SP19** stop points: each fires only when the evidence is ambiguous, each uses the **Evidence + Recommend + Options** format, and each lists the default (auto-pick) for the unambiguous case. The pipeline architecture is unchanged from v5.0.1 (Phase 0 Preflight + 4 phases).
 
 ## Audience
 
@@ -63,7 +63,7 @@ test -f "$RUN_DIR/cleaned_R1.fastq.gz"   && STAGE="preflight"     # cleaned read
 : "${STAGE:=preflight}"
 ```
 
-If auto-detection is ambiguous, ask one short question:
+If auto-detection is ambiguous, ask the user one short question (see **SP0** in §0.5):
 
 > Are you starting a new run, or continuing a previous one?
 > 
@@ -72,6 +72,26 @@ If auto-detection is ambiguous, ask one short question:
 > - I just assembled and want QC
 > - I just ran QC and want annotation
 > - Something failed and I need help debugging
+
+### 0.5 Master ask-user stop points
+
+This orchestrator has **one** user-facing stop point (SP0). All other stop points live in the sub-skills (§1 of each sub-skill). The pattern is **Evidence + Recommend + Options**:
+
+> **Evidence**: I observed X (from $RUN_DIR / params.json / tool output).
+> **Recommend**: Y (based on the evidence).
+> **Confirm or pick one of**: A / B / C.
+
+#### SP0 — Entry-stage ambiguity
+
+| Trigger | Ask |
+|---|---|
+| Stage detection returns `preflight` AND no `$RUN_DIR/cleaned_*.fastq.gz` exists | "I don't see cleaned reads at `$RUN_DIR/cleaned_*.fastq.gz`. Did you run `read-qc-trimming`? Or do you want to point me at raw reads?" |
+
+**Auto-pick when**: cleaned reads exist OR user just said "run bacterial-genome-analysis" with no other context → default to `preflight` stage.
+
+#### Routing rule
+
+Auto-pick the default when the evidence is unambiguous. Ask only when the agent genuinely cannot decide. The sub-skills list every stop point and the trigger condition explicitly — the agent reads each one and asks only when its trigger fires.
 
 ### 0.3 Route to the right sub-skill
 
