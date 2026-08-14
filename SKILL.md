@@ -237,6 +237,9 @@ The agent must stop and warn the user if:
 | "Annotate my genome"                    | Confirm `report.md` is `PASS`. Then invoke `annotation/genome-annotation`.                                                                                         |
 | "Something failed and I don't know why" | Check `preflight/genome-input-preflight`'s **§Signature library** (input validation) and `validation/assembly-qc`'s **§Signature library** (post-assembly). Most common failures are listed there. |
 | "What params should I use?"             | Invoke `preflight/genome-input-preflight` — it computes coverage, platform, and resource budget and writes `params.json` with rationale.                           |
+| "Screen my isolate for AMR genes"       | AMR screening has moved to its own skill: [`amr-gene-screening`](https://github.com/cheahhl814/amr-gene-screening). Run it after this skill's Phase 4 (annotation). |
+| "What AMR genes does my isolate carry?" | Same — use [`amr-gene-screening`](https://github.com/cheahhl814/amr-gene-screening). Default tools: AMRFinderPlus + ABRicate cross-validation. |
+| "I need virulence / mobilome / typing / pangenome" | Future separate skills; not yet shipped. See `obs-2026-08-13-recommended-phase-5-extension-for-bacterial-genome-analysis-` for the roadmap. |
 
 ## F. Procedural Guidelines
 
