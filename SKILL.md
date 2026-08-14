@@ -1,8 +1,8 @@
 ---
 name: bacterial-genome-analysis
 description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates QC, assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm.
-version: 4
-updated: "2026-08-09"
+version: 5
+updated: "2026-08-14"
 triggers:
   - "assemble bacterial genome"
   - "complete bacterial assembly"
@@ -99,6 +99,8 @@ The agent must stop and warn the user if:
 - **High Contamination**: CheckM contamination is $> 10\%$, or Kraken2 detects multiple species.
 - **Fragmented Assembly**: N50 is unexpectedly low for a bacterial isolate.
 - **Polishing Missed**: Moving to validation without polishing a long-read assembly.
+
+**Note on the two threshold tiers:** the 90%/10% figures above are an early-warning tier — cross this and the agent should flag concern and consider re-optimizing before proceeding. The stricter MIMAG high-quality target used by `validation/assembly-qc` (Phase 3's actual exit gate) is **>95% completeness / <5% contamination**; that stricter pair is what determines the real Go/No-Go decision for annotation. Do not treat "above 90/below 10 but below 95/above 5" as a pass — it is warning territory, not a go.
 
 ## Installation & Environment
 

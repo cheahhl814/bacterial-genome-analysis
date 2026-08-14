@@ -1,8 +1,8 @@
 ---
 name: long-read-assembly
 description: Assemble bacterial genomes from long-read sequencing data (ONT/PacBio). This skill implements the consensus assembly paradigm to resolve repeats and produce near-complete circular chromosomes and plasmids, integrating quality filtering and depth downsampling.
-version: 4
-updated: "2026-08-09"
+version: 5
+updated: "2026-08-14"
 triggers:
   - "assemble long reads"
   - "nanopore assembly"
@@ -82,6 +82,10 @@ The agent selects an assembler based on data type and memory constraints.
 
 **Example (Flye):**
 ```bash
+# Flye does not recursively create nested output directories — if --out-dir
+# has a parent that doesn't exist yet (e.g. assembly/flye/), it crashes with
+# FileNotFoundError instead of creating it. mkdir -p first (verified 2026-08-14).
+mkdir -p flye_output/
 flye --nano-raw cleaned_reads.fastq.gz \
      --out-dir flye_output/ \
      --threads 8 \
