@@ -67,3 +67,15 @@ This corpus is for AI agent consumption. When the skill needs to know tool-speci
 # Search across all tool docs
 grep -rn "flag\|option\|usage" docs-corpus/
 ```
+## Gap-Filled Documentation (via herdr delegation)
+
+The following tools had minimal GitHub READMEs and were supplemented with full documentation:
+
+| Tool | Original | Supplemented | Source |
+|------|----------|-------------|--------|
+| SPAdes | 1-line stub | 1,294-line full manual | GitHub (spades-v3.15.5 branch) |
+| Kraken2 | 19-line stub | 61,743-byte MANUAL.md | GitHub docs/MANUAL.html |
+| Polypolish | 13-line stub | 63,837-byte WIKI.md | GitHub wiki (all pages) |
+| BUSCO | Missing | 63,462-byte USERGUIDE.md | busco.ezlab.org |
+
+These were filled by opencode-1 and claude-1 agents via herdr delegation on 2026-08-15.
