@@ -1,0 +1,99 @@
+<a href="documentation/HiCanu_Genome_Research.jpg"><img src="documentation/HiCanu_Genome_Research_Small.jpg" align="right" title="Dark and Stormy until HiCanu sees the Light, the Genome Research cover by Arang Rhie."></a>
+
+Canu is a fork of the [Celera Assembler](http://wgs-assembler.sourceforge.net/wiki/index.php?title=Main_Page), designed for high-noise single-molecule sequencing (such as the [PacBio](http://www.pacb.com) [RS II](http://www.pacb.com/products-and-services/pacbio-systems/rsii/)/[Sequel](http://www.pacb.com/products-and-services/pacbio-systems/sequel/) or [Oxford Nanopore](https://www.nanoporetech.com/) [MinION](https://nanoporetech.com/products)).
+ 
+Canu is a hierarchical assembly pipeline which runs in four steps:
+* Detect overlaps in high-noise sequences using [MHAP](https://github.com/marbl/MHAP)
+* Generate corrected sequence consensus
+* Trim corrected sequences
+* Assemble trimmed corrected sequences
+
+>[!CAUTION]
+>Canu has reached END OF LIFE.  It hasn't seen
+active development since around 2021 and has not been tuned or tested on
+more recent data.  Unless you're assembling reads from that era,
+use a more recent assembler, such as
+[Flye](https://github.com/mikolmogorov/Flye),
+[Hifiasm](https://github.com/chhylp123/hifiasm) or
+[Verkko](https://github.com/marbl/verkko).
+
+*Dark and Stormy until HiCanu sees the Light*, the Genome Research cover image by [Arang Rhie](https://genomeinformatics.github.io/people/rhie/).
+
+## Install:
+
+* Do NOT download the .zip source code.  It is missing files and will not compile.  This is a [known flaw](https://github.com/dear-github/dear-github/issues/214) with git itself.
+
+* The easiest way to get started is to download a binary [release](http://github.com/marbl/canu/releases).
+
+* Installing with a 'package manager' is not encouraged, but if you have no other choice:
+  * Conda: `conda install -c conda-forge -c bioconda -c defaults canu`
+  * Homebrew: `brew install brewsci/bio/canu`
+
+* Alternatively, you can use the latest unreleased version from the source
+  code.  This version has not undergone the same testing as a release and so
+  may have unknown bugs or issues generating sub-optimal assemblies.
+  Depending on your operating system (see below), additional packages will
+  need to be installed.
+
+        git clone https://github.com/marbl/canu.git
+        cd canu/src
+        make -j <number of threads>
+
+  * Linux needs some development packages installed.  Installing
+    libboost1.83-all-dev is perhaps advised, as it is more recent than the one
+    included in Canu, but not required.
+
+        On Ubuntu:
+
+          apt install zlib1g-dev libcurl4-openssl-dev libssl-dev liblzma-dev libbz2-dev
+
+  * FreeBSD generally requires libboost installed from packages/ports.  It
+    will compile with either clang (>= 14) or gcc (>= 9).  It requires
+    openjdk18.
+
+        With clang, libboost MUST be installed from ports.
+
+          gmake
+
+        With gcc, either the canu-supplied or ports-supplied libboost can be used.
+
+          gmake CC=gcc9 CXX=g++9 BOOST=libboost    #  Canu-supplied boost
+          gmake CC=gcc9 CXX=g++9                   #  Ports/packages supplied boost
+
+  * MacOS Apple Silicon requires libboost, and either openjdk or oracle-jdk
+    installed from homebrew (preferred) or MacPorts.  It will compile
+    with either clang (>=14) or gcc (>= 9) but WILL NOT compile with the
+    standard Xcode compiler.
+
+          brew install llvm openjdk boost
+          make CC=gcc-11 CXX=g++-11 BOOST=libboost  #  Canu-supplied boost
+          make CC=gcc-11 CXX=g++-11                 #  Ports/packages supplied boost
+
+        You might need to add the following to .zshrc:
+
+          export JAVA_HOME=/opt/homebrew/opt/openjdk
+
+  * MacOS Intel is probably the same as Apple Silicon, but not tested.
+
+* An *unsupported* Docker image made by Frank Förster is at https://hub.docker.com/r/greatfireball/canu/.
+
+## Learn:
+
+The [quick start](http://canu.readthedocs.io/en/latest/quick-start.html) will get you assembling quickly, while the [tutorial](http://canu.readthedocs.io/en/latest/tutorial.html) explains things in more detail.
+
+## Run:
+
+Brief command line help:
+
+    ../<architecture>/bin/canu
+
+Full list of parameters:
+
+    ../<architecture>/bin/canu -options
+
+## Citation:
+ - Koren S, Walenz BP, Berlin K, Miller JR, Phillippy AM. [Canu: scalable and accurate long-read assembly via adaptive k-mer weighting and repeat separation](https://doi.org/10.1101/gr.215087.116). Genome Research. (2017). `doi:10.1101/gr.215087.116`
+ - Koren S, Rhie A, Walenz BP, Dilthey AT, Bickhart DM, Kingan SB, Hiendleder S, Williams JL, Smith TPL, Phillippy AM. [De novo assembly of haplotype-resolved genomes with trio binning](http://doi.org/10.1038/nbt.4277).  Nature Biotechnology.  (2018). (If you use trio-binning)
+ - Nurk S, Walenz BP, Rhiea A, Vollger MR, Logsdon GA, Grothe R, Miga KH, Eichler EE, Phillippy AM, Koren S. [HiCanu: accurate assembly of segmental duplications, satellites, and allelic variants from high-fidelity long reads](https://doi.org/10.1101/2020.03.14.992248).  biorXiv.  (2020). (If you use -pacbio-hifi)
+ 
+
