@@ -1,8 +1,8 @@
 ---
 name: bacterial-genome-analysis
 description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill. Pairs with the bettamt-style ask-user stop point pattern from Betta-WGS-agent.
-version: 5.0.2
-updated: "2026-08-14"
+version: 5.1.0
+updated: "2026-08-16"
 triggers:
   - "assemble bacterial genome"
   - "complete bacterial assembly"
@@ -16,7 +16,9 @@ triggers:
 
 # Meta-Skill: bacterial-genome-analysis
 
-> **v5.0.2 redesign.** Added the **Ask-User Stop Points** pattern, adopted from `Betta-WGS-agent` (betta-preflight's "validate with user or via command line inspection"). Every sub-skill with decision ambiguity now has explicit **SP1–SP19** stop points: each fires only when the evidence is ambiguous, each uses the **Evidence + Recommend + Options** format, and each lists the default (auto-pick) for the unambiguous case. The pipeline architecture is unchanged from v5.0.1 (Phase 0 Preflight + 4 phases).
+> **v5.1.0 — Adds a Nextflow runner (opt-in).** A thin Nextflow DSL2 wrapper now lives at [`runners/nextflow-runner/`](https://github.com/cheahhl814/bacterial-genome-analysis/tree/master/runners/nextflow-runner) for production / HPC / cohort runs. Bash remains the default and the source of truth. The runner mirrors nf-core/bacass and the [`nextflow-pipelines`](https://github.com/cheahhl814/nextflow-pipelines) style guide. See **§0.4** for the bash-vs-Nextflow decision matrix.
+>
+> **v5.0.2 redesign (predecessor).** Added the **Ask-User Stop Points** pattern, adopted from `Betta-WGS-agent` (betta-preflight's "validate with user or via command line inspection"). Every sub-skill with decision ambiguity now has explicit **SP1–SP19** stop points: each fires only when the evidence is ambiguous, each uses the **Evidence + Recommend + Options** format, and each lists the default (auto-pick) for the unambiguous case. The pipeline architecture is unchanged from v5.0.1 (Phase 0 Preflight + 4 phases).
 
 ## Audience
 
@@ -111,13 +113,20 @@ Auto-pick the default when the evidence is unambiguous. Ask only when the agent 
 
 ### 0.4 The run command (only fires at the `polishing` / `qc` / `annotation` stages)
 
-This skill ships **bash recipes** for each phase — there is no Nextflow runner. For each phase, the sub-skill documents the exact `pixi run` commands. The orchestrator's job is just to:
+This skill ships **bash recipes** for each phase — and now also a thin **Nextflow DSL2 runner** as an opt-in sub-skill for production / HPC / cohort runs. The orchestrator decides which path to take:
+
+| Path | When | Cost | Where |
+|------|------|------|-------|
+| **Bash** (default) | Single-machine dev iteration, 1 isolate | None beyond standard tools | Each sub-skill's `Procedure` section |
+| **Nextflow** (v5.1, opt-in) | Production, HPC/cloud, cohort (≥3 isolates), audit trail needed | Requires Nextflow ≥ 23.10 + container runtime | `runners/nextflow-runner/` (this skill) |
+
+For each phase, every sub-skill documents the exact `pixi run` commands. The orchestrator's job is just to:
 
 1. Confirm the upstream artifact exists (`assembly/*.fasta` for polishing; polished FASTA for qc; polished FASTA for annotation).
 2. Print the recommended command and ask for confirmation.
 3. After execution, write the relevant `report.md` and hand off to the next stage.
 
-If you ever want a Nextflow runner, see `nextflow-pipelines` (skill) and `nf-core/bacass` (reference pipeline) — but that's deliberately out of scope for v5.
+For the Nextflow runner — see [`runners/nextflow-runner/SKILL.md`](https://github.com/cheahhl814/bacterial-genome-analysis/tree/master/runners/nextflow-runner). The runner mirrors nf-core/bacass and the [`nextflow-pipelines`](https://github.com/cheahhl814/nextflow-pipelines) style guide.
 
 ## A. Pipeline Architecture
 
