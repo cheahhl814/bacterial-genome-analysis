@@ -1,0 +1,10 @@
+# Nextflow runtime artifacts (per-run)
+.nextflow.log
+.nextflow/
+results/
+test_results/
+work/
+
+# Editor
+*.swp
+.vscode/
