@@ -101,6 +101,28 @@ pixi run assembly-short   # Tests that short-read assembly tools are available
 
 All 29 required tools are available on `conda-forge` and `bioconda` channels, verified via `pixi search`.
 
+### Reusable database cache
+
+Bakta, Kraken2, and BUSCO each require a reference database. Download them
+once into `assets/` (this skill's own directory, git-ignored — see
+`assets/README.md`) and every future run — bash sub-skills and the Nextflow
+runner alike — reuses them automatically with no re-download and no extra
+flags:
+
+```bash
+SKILL_ROOT="$(pwd)"   # this repo's root, i.e. the skill root
+
+bakta_db download -o "$SKILL_ROOT/assets/bakta_db"
+export BAKTA_DB="$SKILL_ROOT/assets/bakta_db"
+
+kraken2-build --db "$SKILL_ROOT/assets/kraken2_db" --standard   # or a smaller/custom DB
+export KRAKEN2_DB_PATH="$SKILL_ROOT/assets/kraken2_db"
+
+# BUSCO downloads its lineage dataset lazily on first use — just point
+# --download_path at assets/busco_downloads (already the default in
+# validation/assembly-qc and the Nextflow runner).
+```
+
 ## How to use this skill
 
 ### For AI Agents

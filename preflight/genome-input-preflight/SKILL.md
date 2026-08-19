@@ -229,7 +229,7 @@ For ONT, the same with `minimap2 -ax map-ont` instead of `-ax sr`.
 #### 2d) Read-level contamination screen
 
 ```bash
-pixi run --manifest-path "$RUN_DIR/../pixi.toml" kraken2 --db "$KRAKEN2_DB_PATH" \
+pixi run --manifest-path "$RUN_DIR/../pixi.toml" kraken2 --db "${KRAKEN2_DB_PATH:-$SKILL_ROOT/assets/kraken2_db}" \
     --threads 4 \
     --quick \
     --output /tmp/kraken2_preflight.out \
@@ -427,7 +427,7 @@ When preflight fails or produces unexpected output, match the failure against th
 | Signature in stderr / log | Likely cause | Suggested fix |
 | --- | --- | --- |
 | `seqkit: command not found` | pixi env missing `seqkit` | `pixi add seqkit`. |
-| `kraken2: database not found` | `KRAKEN2_DB_PATH` unset | `export KRAKEN2_DB_PATH=/path/to/db` or download with `kraken2-build`. |
+| `kraken2: database not found` | `KRAKEN2_DB_PATH` unset | `export KRAKEN2_DB_PATH="$SKILL_ROOT/assets/kraken2_db"` or download with `kraken2-build --db "$SKILL_ROOT/assets/kraken2_db" ...`. |
 | `Kraken2: DB too large to download` | Limited disk space | Use `minikraken2` or `centrifuge` instead. |
 | `minimap2: cannot find index` | Reference path wrong | Set `EXPECTED_GENOME_SIZE_MB` and skip reference-based coverage (use raw-base formula). |
 | `ModuleNotFoundError: No module named 'pkg_resources'` | Python ≥ 3.12 + setuptools ≥ 81 | `pixi add 'setuptools<81'`. |

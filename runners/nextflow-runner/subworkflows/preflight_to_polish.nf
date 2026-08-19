@@ -131,7 +131,7 @@ workflow preflightToPolish {
     PREFLIGHT(reads_list_ch)
 
     kraken_reads_ch = Channel.empty()
-    if (params.kraken2_db) {
+    if (params.run_kraken && params.kraken2_db) {
         db_ch = Channel.value(file(params.kraken2_db, checkIfExists: true))
         kraken_in_ch = reads_ch.map { id, r1, r2, lr -> tuple(id, r1 ?: lr) }.combine(db_ch)
         KRAKEN2_READS(kraken_in_ch)

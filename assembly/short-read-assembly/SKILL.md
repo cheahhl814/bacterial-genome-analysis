@@ -165,7 +165,7 @@ cp "$RUN_DIR/megahit_output/final.contigs.fa" "$RUN_DIR/draft.fasta"
 Before proceeding to polishing (if applicable) or annotation, the assembly MUST be checked for contamination.
 
 ```bash
-kraken2 --db /path/to/kraken2_db --threads 8 \
+kraken2 --db "${KRAKEN2_DB_PATH:-$SKILL_ROOT/assets/kraken2_db}" --threads 8 \
         --output "$RUN_DIR/kraken2.out" \
         --report "$RUN_DIR/kraken2_report.txt" \
         --confidence 0.05 \
@@ -197,7 +197,7 @@ When assembly fails, match the failure against these patterns. **Always** read t
 | Assembly length much larger than expected | Contamination from another organism | Run `Kraken2` and filter out contaminating contigs. |
 | Assembly length much smaller than expected | Aggressive trimming or failed assembly | Reduce QC stringency; check for adapter contamination. |
 | Many misassemblies reported by QUAST | Repetitive regions or heterozygous sites (if not haploid) | Use `--careful` mode (SPAdes); consider downsampling or hybrid assembly. |
-| `Kraken2 database not found` | DB path missing or `KRAKEN2_DB_PATH` env var unset | Set `KRAKEN2_DB_PATH`; download with `kraken2-build --download-taxonomy`. |
+| `Kraken2 database not found` | DB path missing or `KRAKEN2_DB_PATH` env var unset | `export KRAKEN2_DB_PATH="$SKILL_ROOT/assets/kraken2_db"`; download with `kraken2-build --db "$SKILL_ROOT/assets/kraken2_db" --download-taxonomy`. |
 | `Kraken2 database too large to download` | Limited disk space | Use a smaller database (e.g. `minikraken2`) or `centrifuge` instead. |
 
 ## Verification

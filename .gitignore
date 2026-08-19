@@ -1,0 +1,4 @@
+# Reusable database cache — large downloads (hundreds of MB to 10+ GB),
+# never committed. Only the explanatory README is tracked. See assets/README.md.
+/assets/*
+!/assets/README.md

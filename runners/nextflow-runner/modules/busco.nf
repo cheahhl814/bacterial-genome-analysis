@@ -21,6 +21,7 @@ process BUSCO {
         --out_path ${sample_id}_busco \\
         --mode genome \\
         --lineage_dataset ${params.busco_lineage} \\
+        --download_path ${params.busco_download_path} \\
         --cpu ${task.cpus}
     """
 

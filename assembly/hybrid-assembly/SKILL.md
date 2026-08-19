@@ -177,7 +177,7 @@ cp "$RUN_DIR/hybracter_out/finished_genomes/*.fasta" "$RUN_DIR/draft.fasta"
 | Plasmids not circularized | Insufficient long-read coverage of plasmid; plasmid loss | Increase long-read depth; check for coverage uniformity. |
 | Dragonflye produces fragmented assembly | Poor-quality long reads or insufficient coverage | Use `Filtlong` to filter low-quality reads; increase sequencing depth. |
 | `Dragonflye: Racon not found` | pixi env missing `racon` | `pixi add racon`. |
-| `Hybracter: cannot find bakta_db` | Bakta DB path env var unset | `export BAKTA_DB=/path/to/db` or pass `--bakta-db`. |
+| `Hybracter: cannot find bakta_db` | Bakta DB path env var unset | `export BAKTA_DB="$SKILL_ROOT/assets/bakta_db"` (or another path) or pass `--bakta-db`. |
 | `Hybracter: long-read subsampling failed` | Insufficient long-read coverage | Increase long-read input depth. |
 | Misassemblies at repeat boundaries | Long-read errors or incorrect assembler parameters | Try the alternative paradigm (Unicycler vs. Dragonflye); increase coverage. |
 | `Killed` (any tool, exit 137) | OOM | Subsample reads; switch to a less memory-hungry assembler; reduce threads. |

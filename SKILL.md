@@ -51,6 +51,17 @@ This meta-skill is a **router**, not a doer. It does not duplicate logic from th
 
 By convention the agent writes handoff files (see §B) to a run directory. Default: the current working directory. Override with `RUN_DIR` env var.
 
+### 0.1b Locate the skill root — reusable database cache
+
+`SKILL_ROOT` is this skill's own directory (the parent of `annotation/`, `assembly/`, `validation/`, `preflight/`, `runners/`) — **not** `RUN_DIR`. It contains `assets/`, the default download target for the large reference databases (Bakta, Kraken2, BUSCO) so a one-time download is reused across every future run, including Nextflow runs. See `assets/README.md`.
+
+```bash
+# Resolve once per session; every sub-skill below assumes this is set.
+SKILL_ROOT="/absolute/path/to/skills/bacterial-genome-analysis"
+```
+
+Each sub-skill's database-lookup order is: explicit env var / flag → an existing DB the user already pointed at → `$SKILL_ROOT/assets/<db>/` (if populated) → else ask the user (see each sub-skill's stop points).
+
 ### 0.2 Detect the user's stage
 
 Try to detect automatically **before** asking:

@@ -74,13 +74,20 @@ ls runners/nextflow-runner/
 
 ## Quick Start
 
+`--bakta_db`, `--kraken2_db`, and `--busco_lineage`'s download path all default
+to the skill's reusable database cache at `../../assets/` (see
+`assets/README.md`) — if you already populated it via a bash sub-skill run
+(e.g. `bakta_db download -o "$SKILL_ROOT/assets/bakta_db"`), you don't need
+to pass these flags at all. Pass them explicitly only to point at a
+different location.
+
 ```bash
 # Single isolate, short reads
 nextflow run runners/nextflow-runner/main.nf \
     --reads 'data/sample1/*_{1,2}.fq.gz' \
     --mode short \
     --outdir results/sample1 \
-    --run_bakta true --bakta_db /data/bakta_db \
+    --run_bakta true \
     -profile docker
 
 # Single isolate, long reads (ONT/HiFi)
@@ -95,11 +102,24 @@ nextflow run runners/nextflow-runner/main.nf \
     --sample_sheet samples.csv \
     --mode short \
     --outdir results/cohort \
-    --bakta_db /data/bakta_db \
     -profile slurm,docker
+
+# Overriding the default DB location
+nextflow run runners/nextflow-runner/main.nf \
+    --reads 'data/sample1/*_{1,2}.fq.gz' \
+    --run_bakta true --bakta_db /data/bakta_db \
+    -profile docker
 ```
 
 `samples.csv` format: `sample_id,fastq_1,fastq_2` header row, one isolate per line.
+
+**Containers**: `-profile docker`/`-profile singularity` only auto-mount host
+paths that are declared Nextflow process inputs. `kraken2_db` is declared
+this way and works out of the box. `bakta_db` and BUSCO's `--download_path`
+are referenced directly via `params.*` inside the process script and are
+**not** auto-mounted — either run with `-profile standard` (native execution,
+no container), or extend `docker.runOptions` / add a Singularity bind mount
+for `${projectDir}/../../assets` in `nextflow.config`.
 
 ## Pipeline Architecture — 5 phases
 
@@ -229,11 +249,11 @@ Per-process overrides are in `conf/modules.config` (BAKTA is `process_medium`).
 | Symptom                                          | Likely cause                              | Fix                                                |
 | ------------------------------------------------ | ----------------------------------------- | -------------------------------------------------- |
 | `processExecutorNotPausedException`              | Insufficient memory for SPAdes            | Switch to `process_high` or reduce `--reads` set   |
-| `Kraken2 DB not found`                           | `--kraken2_db` wrong path                 | Confirm `params.kraken2_db` is the directory, not the `.k2d` file |
-| Bakta exits early with `DatabaseNotFound`        | `--bakta_db` not supplied                 | Set `--bakta_db /path/to/bakta-db` or `--run_bakta false` |
+| `Kraken2 DB not found`                           | `--kraken2_db` wrong path, or default `assets/kraken2_db` is empty | Confirm `params.kraken2_db` is the directory, not the `.k2d` file; populate `$SKILL_ROOT/assets/kraken2_db` with `kraken2-build` or pass `--kraken2_db /path/to/db` |
+| Bakta exits early with `DatabaseNotFound`        | `--bakta_db` not supplied and default `assets/bakta_db` is empty | Run `bakta_db download -o "$SKILL_ROOT/assets/bakta_db"` once, or pass `--bakta_db /path/to/bakta-db`, or `--run_bakta false` |
 | Flye `--nano-hq` flag rejected                    | Flye version < 2.9                        | Switch container tag (see `modules/long_read_assembly.nf` comment) |
 | QUAST `report.html` empty                        | QUAST crashed on contig naming            | Verify sample id has no spaces / special chars     |
-| BUSCO `Downloading lineage dataset` very slow    | Cold download                             | Pre-cache `${params.busco_lineage}` to a shared location |
+| BUSCO `Downloading lineage dataset` very slow    | Cold download to `assets/busco_downloads` | One-time cost; subsequent runs reuse the cache automatically via `--download_path`. To pre-warm it, run `busco --download_path "$SKILL_ROOT/assets/busco_downloads" --download ${params.busco_lineage}` ahead of time |
 | CheckM `pkg_resources` ImportError               | Python ≥ 3.12 vs old setuptools           | Pre-set `PYTHONPATH` or use `singularity` profile  |
 | Polypolish `polypolish polish` not found         | Container version mismatch                | Pin `polypolish:0.7.1` (current default)            |
 | `-resume` re-runs everything                     | Out-dir has different paths               | Use the same `--outdir` and same `-work-dir`         |

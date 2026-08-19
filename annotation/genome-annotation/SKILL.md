@@ -72,9 +72,9 @@ This sub-skill has **2 stop points** (SP18, SP19). Each fires only when the evid
 
 | Trigger                                                                                        | Evidence check                            | Action                                                                                                                                                                                                                             |
 | ---------------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `$BAKTA_DB` env var unset AND no `bakta_db/` directory found AND no `--db` flag in params.json | Bakta requires a ~10 GB database download | Ask: "Bakta database is not installed. Pick: (A) download now (~10 GB, one-time), (B) use DFAST instead (lighter, ~2 GB DB, less comprehensive), (C) use Prokka (legacy, ships with small DB, less accurate for sORFs), (D) abort" |
+| `$BAKTA_DB` env var unset AND no `bakta_db/` directory found AND `$SKILL_ROOT/assets/bakta_db/` is empty AND no `--db` flag in params.json | Bakta requires a ~10 GB database download | Ask: "Bakta database is not installed. Pick: (A) download now to `$SKILL_ROOT/assets/bakta_db` (~10 GB, one-time, reused by every future run), (B) use DFAST instead (lighter, ~2 GB DB, less comprehensive), (C) use Prokka (legacy, ships with small DB, less accurate for sORFs), (D) abort" |
 
-**Auto-pick when**: `$BAKTA_DB` is set OR user explicitly said "Bakta is configured". No ask.
+**Auto-pick when**: `$BAKTA_DB` is set, OR `$SKILL_ROOT/assets/bakta_db/` already contains a populated database (auto-set `BAKTA_DB="$SKILL_ROOT/assets/bakta_db"`), OR user explicitly said "Bakta is configured". No ask.
 
 ### SP19 — NCBI submission intent detected
 
@@ -122,9 +122,10 @@ Genome annotation identifies protein-coding sequences (CDS), RNAs, and other gen
 pixi project channel add conda-forge
 pixi project channel add bioconda
 pixi add bakta prokka dfast tbl2asn
-# Bakta database download (one-time, ~10 GB)
-bakta_db download -o /path/to/bakta_db
-export BAKTA_DB=/path/to/bakta_db
+# Bakta database download (one-time, ~10 GB) — target the skill's reusable
+# cache so every future run (bash or Nextflow) picks it up automatically.
+bakta_db download -o "$SKILL_ROOT/assets/bakta_db"
+export BAKTA_DB="$SKILL_ROOT/assets/bakta_db"
 ```
 
 ## Procedure
@@ -227,7 +228,7 @@ The agent shall ensure the following files are produced:
 | Signature in stderr / log                    | Likely cause                               | Suggested fix                                                                                         |
 | -------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | Bakta database download fails                | Network issues or disk space               | Retry with `--debug`; ensure sufficient disk space ($>10$ GB).                                        |
-| `BAKTA_DB environment variable not set`      | DB path env var missing                    | `export BAKTA_DB=/path/to/db` or pass `--db /path/to/db`.                                             |
+| `BAKTA_DB environment variable not set`      | DB path env var missing                    | `export BAKTA_DB="$SKILL_ROOT/assets/bakta_db"` (or another path) or pass `--db /path/to/db`.         |
 | Annotation produces very few genes ($<1000$) | Assembly is incomplete or contaminated     | Re-check QC metrics in `$RUN_DIR/report.md`; ensure assembly passed completeness/contamination gates. |
 | Annotation produces too many genes ($>8000$) | Contamination or fragmented assembly       | Run `Kraken2` to check for contamination; consider re-assembly.                                       |
 | Prokka fails with "can't find genus"         | No taxonomy specified for novel organism   | Provide `--genus` and `--species` flags; or use `--metagenome` mode.                                  |

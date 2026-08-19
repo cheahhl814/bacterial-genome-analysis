@@ -22,11 +22,14 @@ workflow {
         }
     }
 
-    if (params.run_bakta && !params.bakta_db) {
-        error "Bakta is enabled but --bakta-db was not provided. Point it at a downloaded bakta database directory, or set --run_bakta false."
+    // bakta_db / kraken2_db default to assets/ (see nextflow.config), so a
+    // missing --flag isn't enough to catch a first-time user — check the
+    // resolved path is actually populated.
+    if (params.run_bakta && !(new File(params.bakta_db as String).list())) {
+        error "Bakta is enabled but no database found at '${params.bakta_db}'. Download one with: bakta_db download -o \"\$SKILL_ROOT/assets/bakta_db\" — or pass --bakta_db /path/to/db, or set --run_bakta false."
     }
-    if (params.run_kraken && !params.kraken2_db) {
-        error "Read contamination screening is enabled but --kraken2-db was not provided."
+    if (params.run_kraken && !(new File(params.kraken2_db as String).list())) {
+        error "Read contamination screening is enabled but no database found at '${params.kraken2_db}'. Populate it with kraken2-build --db \"\$SKILL_ROOT/assets/kraken2_db\" ... — or pass --kraken2_db /path/to/db, or set --run_kraken false."
     }
 
     // ---- input channels ----

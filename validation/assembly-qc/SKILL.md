@@ -143,8 +143,10 @@ busco -i "$RUN_DIR/assembly.fasta" \
       -o "$RUN_DIR/busco_output/busco" \
       -m genome \
       --cpu 8 \
-      --download_path "$RUN_DIR/busco_output/download"
+      --download_path "$SKILL_ROOT/assets/busco_downloads"
 ```
+
+Point `--download_path` at `$SKILL_ROOT/assets/busco_downloads` (not a per-run directory) so the lineage dataset is downloaded once and reused by every future run instead of being re-fetched per `$RUN_DIR`.
 *Key Metrics (read from `$RUN_DIR/busco_output/short_summary.*.txt`):*
 - **Complete BUSCOs (C)**: Ideally $> 95\%$.
 - **Fragmented (F)**: Ideally $< 5\%$.
@@ -155,7 +157,7 @@ busco -i "$RUN_DIR/assembly.fasta" \
 Ensure the assembly does not contain sequences from unexpected organisms.
 
 ```bash
-kraken2 --db /path/to/kraken2_db \
+kraken2 --db "${KRAKEN2_DB_PATH:-$SKILL_ROOT/assets/kraken2_db}" \
         --threads 8 \
         --output "$RUN_DIR/kraken2.out" \
         --report "$RUN_DIR/kraken2_report.txt" \
@@ -163,6 +165,8 @@ kraken2 --db /path/to/kraken2_db \
         "$RUN_DIR/assembly.fasta"
 ```
 *Action*: Any contig assigned to a different taxonomic class (e.g., human, plant, or different bacteria) should be flagged for removal.
+
+*DB reuse*: if `$KRAKEN2_DB_PATH` is unset, this defaults to `$SKILL_ROOT/assets/kraken2_db` — build or extract the DB there once (`kraken2-build --db "$SKILL_ROOT/assets/kraken2_db" ...`) and every future run reuses it without re-downloading.
 
 ### Phase 2: Write `report.md`
 
@@ -209,7 +213,7 @@ The verdict assignment per check:
 | `busco: command not found` | pixi env missing `busco` | `pixi add busco`. |
 | `kraken2: command not found` | pixi env missing `kraken2` | `pixi add kraken2`. |
 | `Killed` (any tool, exit 137) | OOM | Reduce `-t` (threads); for CheckM, see pixi.toml `setuptools<81` note. |
-| `Kraken2: database not found` | `KRAKEN2_DB_PATH` unset or path wrong | `export KRAKEN2_DB_PATH=/path/to/db`. |
+| `Kraken2: database not found` | `KRAKEN2_DB_PATH` unset or path wrong | `export KRAKEN2_DB_PATH="$SKILL_ROOT/assets/kraken2_db"` (or another path). |
 
 ## Output contract — `$RUN_DIR/report.md` template
 
