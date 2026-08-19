@@ -62,7 +62,7 @@ The assembly sub-skills **refuse to run** unless `$RUN_DIR/preflight.md` overall
 
 ## 0.5 Ask-User Stop Points
 
-This sub-skill has **7 stop points** (SP1–SP7). Each fires only when the evidence is ambiguous. The format is **Evidence + Recommend + Options**. If the evidence is unambiguous, the agent auto-picks the default and proceeds silently.
+This sub-skill has **8 stop points** (SP1–SP8). Each fires only when the evidence is ambiguous. The format is **Evidence + Recommend + Options**. If the evidence is unambiguous, the agent auto-picks the default and proceeds silently.
 
 ### SP1 — Platform ambiguous (no FASTQ tells us)
 
@@ -121,6 +121,15 @@ This sub-skill has **7 stop points** (SP1–SP7). Each fires only when the evide
 | Free space < 20 GB | NO-GO territory | Ask: "Only `<X> GB` free on `$RUN_DIR`. Bacterial assemblies need ≥ 50 GB. Pick: (A) free up disk by clearing intermediate files, (B) move `$RUN_DIR` to a larger disk, (C) abort" |
 
 **Auto-pick when**: free space ≥ 50 GB. Warning auto-set for 20–50 GB (no ask).
+
+### SP8 — Downstream database not populated
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `$SKILL_ROOT/assets/bakta_db/` is empty AND `$BAKTA_DB` unset | Annotation phase will hit a ~10 GB download mid-pipeline | Ask: "Bakta's database isn't downloaded yet (checked `$SKILL_ROOT/assets/bakta_db`). Pick: (A) download it now so it's ready before assembly runs (`bakta_db download -o \"$SKILL_ROOT/assets/bakta_db\"`, ~10 GB, one-time), (B) proceed anyway — I'll be asked again at the annotation phase, (C) skip Bakta and use DFAST/Prokka later" |
+| `$SKILL_ROOT/assets/kraken2_db/` is empty AND `$KRAKEN2_DB_PATH` unset | The 2d contamination screen (and later assembly-qc) can't run | Ask: "Kraken2's database isn't populated yet (checked `$SKILL_ROOT/assets/kraken2_db`). Pick: (A) build/download it now, (B) skip the contamination screen for this run (`GO-WITH-WARNINGS`, less confidence in the verdict), (C) point me at an existing DB with `KRAKEN2_DB_PATH`" |
+
+**Auto-pick when**: both `assets/bakta_db/` and `assets/kraken2_db/` are already populated, or the corresponding env var is set. BUSCO is intentionally excluded here — it downloads its own lineage lazily on first QC run and doesn't block preflight. This is advisory only: a missing DB never forces `NO-GO` on its own, since preflight's job is to flag it early, not to block on a phase that hasn't started yet. Record the finding as a `warnings[]` entry in `params.json` either way.
 
 ### Operating rule
 
@@ -296,6 +305,29 @@ echo "Local machine: ncpu=$NCPU, ram=${RAM_GB}GB"
 | $8{-}16$ cores, $32{-}64$ GB RAM | `GO-WITH-WARNINGS` | fine for short-read; tight for large long-read |
 | $< 8$ cores or $< 16$ GB RAM | `GO-WITH-WARNINGS` | recommend SLURM or smaller subsamples |
 
+#### 2h) Downstream database availability check
+
+This is advisory, not a gate — it flags databases needed by *later* phases (annotation, QC) while the user is still here, so they don't discover a 10 GB download mid-pipeline. It never fails preflight on its own (see SP8).
+
+```bash
+check_db() {
+    local name="$1" env_var="$2" default_path="$3"
+    local path="${!env_var:-$default_path}"
+    if [ -n "$(ls -A "$path" 2>/dev/null)" ]; then
+        echo "$name -> OK ($path)"
+    else
+        echo "$name -> EMPTY ($path)"
+    fi
+}
+check_db "bakta_db"   BAKTA_DB       "$SKILL_ROOT/assets/bakta_db"
+check_db "kraken2_db" KRAKEN2_DB_PATH "$SKILL_ROOT/assets/kraken2_db"
+```
+
+| DB status | Verdict contribution | Note |
+| --- | --- | --- |
+| Both populated (or env var points elsewhere and is non-empty) | no warning | annotation/contamination phases are ready to go |
+| One or both `EMPTY` | `warnings[]` entry, does not force `NO-GO` | see SP8 — ask the user whether to download now or defer |
+
 ### 3. Write outputs
 
 #### 3a) `params.json` schema
@@ -334,6 +366,10 @@ echo "Local machine: ncpu=$NCPU, ram=${RAM_GB}GB"
     "minimap2": "OK",
     "kraken2": "OK",
     "checkm-genome": "GO-WITH-WARNINGS (pkg_resources trap; require setuptools<81)"
+  },
+  "databases": {
+    "bakta_db": "OK ($SKILL_ROOT/assets/bakta_db)",
+    "kraken2_db": "OK ($SKILL_ROOT/assets/kraken2_db)"
   },
   "recommendations": {
     "assembler": "spades",
@@ -379,6 +415,7 @@ Pipeline:   bacterial-genome-analysis v5.0.1
 | Disk space | ✅ | 320 GB free | >50 GB |
 | Tool availability | ✅ | all OK | — |
 | Resource (host) | ✅ | 16 cores / 64 GB | >8 cores / >32 GB |
+| Downstream DBs (Bakta, Kraken2) | ✅ | both populated in `assets/` | non-empty (advisory only) |
 
 ## Recommendations
 
