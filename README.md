@@ -165,7 +165,7 @@ To install globally for one user, copy or symlink the skill to your user-scope p
 
 | Tool | User-scope path |
 |---|---|
-| pi | `~/.pi/agent/skills/` |
+| pi | your agent's skills directory |
 | OpenCode | `~/.config/opencode/skills/` or `~/.agents/skills/` |
 | Codex | `~/.agents/skills/` |
 
