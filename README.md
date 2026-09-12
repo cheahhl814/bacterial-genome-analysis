@@ -1,204 +1,232 @@
-# Bacterial Genome Analysis Skills
+# bacterial-genome-analysis
 
-> **v5.0.2.** Added the **Ask-User Stop Points** pattern (SP0–SP19), adopted from `Betta-WGS-agent`. Each sub-skill with decision ambiguity now has explicit stop points that fire only when evidence is ambiguous; the format is **Evidence + Recommend + 2–4 options**. v5.0.1 structure (preflight + 4 phases) is unchanged.
+[![Version](https://img.shields.io/badge/version-5.1.0-blue)](#-installation)
+[![Type](https://img.shields.io/badge/type-agent%20skill-blueviolet)](#-installation)
+[![Built with](https://img.shields.io/badge/built%20with-bioinfo--skill--creator-orange)](https://github.com/cheahhl814/bioinfo-skill-creator)
 
-This meta-skill orchestrates the end-to-end reconstruction of bacterial genomes, transforming cleaned sequencing reads into a validated, polished, and annotated genomic sequence. It implements the **"Finished Genome"** paradigm, ensuring that assembly errors are corrected before biological features are labeled.
+End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill. Pairs with the bettamt-style ask-user stop point pattern from Betta-WGS-agent.
 
-> **Dual-Audience Design**: This meta-skill is designed to serve **both AI coding agents and human bioinformaticians**. The structured triggers, evidence chains, and Go/No-Go gates guide autonomous execution, while the embedded "When to Use", "Why This Tool", "Conceptual Background", and "Troubleshooting" sections provide human readers with the intuition to make informed decisions.
+**Repository**: https://github.com/cheahhl814/bacterial-genome-analysis
 
-## Pipeline Overview
+> [!NOTE]
+> Current version: **v5.1.0** (updated 2026-08-16).
 
-The analysis follows a strict **5-phase evidence chain** (building upon upstream read QC, covered by the separate [`read-qc-trimming`](https://github.com/cheahhl814/read-qc-trimming) skill). Moving to a subsequent phase requires passing a "Go/No-Go" quality gate AND emitting the artifact the next phase expects.
+## Contents
 
-| # | Phase | Goal | Sub-Skill | Artifact produced |
-|:---|:---|:---|:---|:---|
-| **0** | **Preflight** (The Audit) | Validate inputs, compute evidence, write `params.json` + `preflight.md`. | `/preflight` | `$RUN_DIR/preflight.md` + `$RUN_DIR/params.json` |
-| **1** | **Assembly** (The Draft) | Generate initial contigs from cleaned reads. | `/assembly` | `$RUN_DIR/draft.fasta` |
-| **2** | **Polishing** (The Correction) | Correct base-level errors (INDELs, SNPs). | `/polishing` | `$RUN_DIR/assembly.fasta` |
-| **3** | **Validation** (The Quality Gate) | Quantify contiguity, completeness, contamination. | `/validation` | `$RUN_DIR/report.md` |
-| **4** | **Annotation** (The Labeling) | Identify and label biological features. | `/annotation` | `$RUN_DIR/bakta_output/<prefix>.{gff3,gbff,faa,fna}` |
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Pipeline overview](#-pipeline-overview)
+- [Tools](#-tools)
+- [Update check](#-update-check)
+- [Repository layout](#-repository-layout)
+- [Hard guarantees](#-hard-guarantees)
+- [Nextflow runner](#-nextflow-runner)
+- [Provenance](#-provenance)
 
-### Phase Selection Logic
+## 🚀 Installation
 
-- **Phase 1a (Short-Read)**: Use Illumina data only $\rightarrow$ produces fragmented drafts.
-- **Phase 1b (Long-Read)**: Use ONT/PacBio data only $\rightarrow$ produces near-complete genomes.
-- **Phase 1c (Hybrid)**: Use both $\rightarrow$ the **gold standard** for closed genomes.
+This is an **agent skill**, not a user-facing library. The recommended install path is to let your AI agent import it.
 
-## v5 design — what changed
+**Option A — give your agent this prompt (recommended):**
 
-### v5.0.2 (current)
+```text
+Install the bacterial-genome-analysis skill from
+https://github.com/cheahhl814/bacterial-genome-analysis —
+clone it into your agent's skills directory (the path your agent watches
+for skills) and run `pixi install` from that directory. Then read the
+skill's SKILL.md to understand its phases and the Input/Output contract
+for each. Confirm when the environment is ready.
+```
 
-- **Ask-User Stop Points** added across the master orchestrator and 5 sub-skills (19 total: SP0 + SP1–SP19).
-- Each stop point uses the **Evidence + Recommend + Options** format adopted from `Betta-WGS-agent` (`betta-preflight`'s "validate with user or via command line inspection").
-- Each stop point fires **only when the evidence is ambiguous**; otherwise the agent auto-picks the default and proceeds silently.
-- Pattern is identical across all 5 sub-skills: `## 0.5 Ask-User Stop Points` section with one table per stop point.
-- Master orchestrator adds §0.5 with **SP0** (entry-stage ambiguity).
-
-| Sub-skill | Stop points | Trigger categories |
-|---|---|---|
-| Master orchestrator | SP0 | stage ambiguity |
-| `preflight/genome-input-preflight` | SP1–SP7 | platform, path, expected size, organism, tools, contamination, disk |
-| `assembly/short-read-assembly` | SP8, SP9 | coverage, memory |
-| `assembly/long-read-assembly` | SP10, SP11, SP12 | coverage, RAM, HiFi flag |
-| `assembly/hybrid-assembly` | SP13, SP14 | short coverage + Unicycler, long coverage |
-| `polishing/genome-polishing` | SP15, SP16, SP17 | HiFi optional, short-only, Medaka model |
-| `annotation/genome-annotation` | SP18, SP19 | Bakta DB missing, NCBI submission intent |
-
-### v5.0.1 (preflight)
-
-- New **Phase 0 Preflight** sub-skill at `preflight/genome-input-preflight/` — runs `seqkit stats`, `minimap2` downsampled coverage, `kraken2` read-level screen, disk / resource checks, and tool availability. Writes `params.json` (machine contract) and `preflight.md` (audit trail) with overall verdict `GO` / `GO-WITH-WARNINGS` / `NO-GO`.
-- The **three assembly sub-skills refuse to run** without `preflight.md` ≥ `GO-WITH-WARNINGS`.
-- Orchestrator stage detection ladder now triggers `preflight` when cleaned reads exist but `preflight.md` is missing.
-- Handoff contract table now includes `preflight → assembly` (params.json + preflight.md).
-
-### v5.0.0 (initial restructure)
-
-| Change | v4 (old) | v5.0.0 (new) |
-| --- | --- | --- |
-| Orchestrator | None — master SKILL.md was a wall of phases | §0 orchestrator: detects stage from filesystem evidence and routes to the right sub-skill |
-| Handoff contract | Prose ("prerequisites: cleaned reads...") | Tabular §B in master + §0 Inputs/Outputs contract in every sub-skill |
-| QC report | Just a recipe for running QUAST/CheckM/BUSCO/Kraken2 | `validation/assembly-qc` now **writes `$RUN_DIR/report.md`** with pass/warn/fail verdicts |
-| Troubleshooting | Free-form paragraphs | **Signature library** table per sub-skill: stderr pattern $\rightarrow$ likely cause $\rightarrow$ suggested fix |
-| Anti-patterns | Implicit | Explicit "What NOT to do" section in every sub-skill |
-| Disk check | Missing | §F.2 in master + every sub-skill respects `$RUN_DIR` env var |
-| Skip polish shortcut | Implicit | Master explicitly distinguishes "always polish (long-read)" vs "optional polish (short-read)" |
-
-### What did NOT change (since v4)
-
-- **The 4-phase pipeline architecture** itself (Assembly $\rightarrow$ Polishing $\rightarrow$ Validation $\rightarrow$ Annotation) — still grounded in `nf-core/bacass`.
-- **The Go/No-Go gate logic** — 90/10 warning + 95/5 strict MIMAG.
-- **The bash recipes** in each sub-skill — only the surrounding contract and signature library were added.
-- **The pixi.toml** — tools unchanged.
-
-## When to Use This Skill
-
-✅ **Use this skill** when you need to:
-- Reconstruct a bacterial genome **de novo** (without a reference).
-- Achieve a **complete, closed genome** (single contig per replicon).
-- Identify AMR genes, virulence factors, or metabolic pathways.
-- Submit a genome to NCBI (requires GenBank annotation).
-
-❌ **Do NOT use this skill** for:
-- Reference-based variant calling (use a variant calling pipeline).
-- Eukaryotic, viral, or metagenomic data (different paradigms apply).
-- Raw read statistics (use the `read-qc-trimming` skill).
-
-## Installation
-
-A `pixi.toml` is provided for one-step environment setup. Clone the repository and run:
+**Option B — manual install:**
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/cheahhl814/bacterial-genome-analysis.git
 cd bacterial-genome-analysis
-
-# 2. Initialize the pixi environment (installs all 29 tools)
 pixi install
-
-# 3. Verify the environment
-pixi run assembly-short   # Tests that short-read assembly tools are available
 ```
 
-All 29 required tools are available on `conda-forge` and `bioconda` channels, verified via `pixi search`.
+> [!TIP]
+> `pixi install` resolves every pinned tool from `pixi.toml` (channels: conda-forge, bioconda) into an isolated `.pixi/` environment — no system-wide installs, no version conflicts with other skills.
 
-### Reusable database cache
+## 💡 Usage
 
-Bakta, Kraken2, and BUSCO each require a reference database. Download them
-once into `assets/` (this skill's own directory, git-ignored — see
-`assets/README.md`) and every future run — bash sub-skills and the Nextflow
-runner alike — reuses them automatically with no re-download and no extra
-flags:
+The skill is designed to be driven by an AI agent: the agent reads the master `SKILL.md`, detects the current phase from the filesystem state of your run directory, and routes to the right sub-skill.
+
+### Natural-language prompts that trigger the skill
+
+```text
+assemble bacterial genome
+complete bacterial assembly
+bacterial genome pipeline
+de novo bacterial assembly
+annotate bacterial genome
+```
+
+### Manual phase execution
+
+If you prefer to drive the phases yourself (or want to re-run a single phase):
 
 ```bash
-SKILL_ROOT="$(pwd)"   # this repo's root, i.e. the skill root
+# Set your run directory (all phase artifacts land here)
+RUN_DIR=/path/to/run-dir
 
-bakta_db download -o "$SKILL_ROOT/assets/bakta_db"
-export BAKTA_DB="$SKILL_ROOT/assets/bakta_db"
-
-kraken2-build --db "$SKILL_ROOT/assets/kraken2_db" --standard   # or a smaller/custom DB
-export KRAKEN2_DB_PATH="$SKILL_ROOT/assets/kraken2_db"
-
-# BUSCO downloads its lineage dataset lazily on first use — just point
-# --download_path at assets/busco_downloads (already the default in
-# validation/assembly-qc and the Nextflow runner).
+pixi run preflight   # Phase 1 — validate inputs, write preflight.md + params.json
+pixi run run         # Phase 2 — execute the workflow (after preflight ≥ GO)
+pixi run qc          # Phase 3 — build the final report (after run completes)
+pixi run debug       # On failure — interpret stderr via the signature library
+pixi run battle-test # Verify the skill's structural integrity
 ```
 
-## How to use this skill
+> [!IMPORTANT]
+> Each phase has an explicit **Inputs/Outputs contract** at the top of its sub-skill `SKILL.md`. If the upstream artifact is missing (e.g. you run `run` before `preflight` passed), the sub-skill refuses to proceed and tells you which phase to run first. Phases are gated on purpose — don't skip them.
 
-### For AI Agents
+## 🔬 Pipeline overview
 
-Import the skill URL into your agent harness:
+The analysis follows a phased evidence chain. Each phase consumes the artifacts of the previous phase and gates progression with a Go/No-Go check.
 
+| # | Phase | Goal | Sub-skill | Artifact produced |
+|:--|:------|:-----|:----------|:------------------|
+| **1** | **Annotation** | This skill serves two purposes: | `annotation/` | `$RUN_DIR/annotation-artifact.md` |
+| **2** | **Assembly** | This skill serves two purposes: | `assembly/` | `$RUN_DIR/assembly-artifact.md` |
+| **3** | **Polishing** | This skill serves two purposes: | `polishing/` | `$RUN_DIR/polishing-artifact.md` |
+| **4** | **Preflight** | **v5.0.1.** New sub-skill. Mirrors the `bettamt-preflight` pattern from [BettaMt-agents](https://github.com/cheahhl814/B | `preflight/` | `$RUN_DIR/preflight.md` |
+| **5** | **Runners** | This sub-skill ships a thin Nextflow DSL2 wrapper around the bash recipes in the parent `bacterial-genome-analysis` skil | `runners/` | `$RUN_DIR/runners-artifact.md` |
+| **6** | **Validation** | **v5 redesign.** This skill used to be just a recipe for running QC tools. It now also **generates a verdict** by writin | `validation/` | `$RUN_DIR/validation-artifact.md` |
+
+> [!TIP]
+> Read each sub-skill's `SKILL.md` for the full procedure, its ask-user stop points, and its signature library (stderr pattern → cause → fix).
+
+## 🧰 Tools
+
+All tools are resolved from conda-forge/bioconda via the pinned `pixi.toml`.
+
+| Tool | Version | Role |
+|:-----|:--------|:-----|
+| `setuptools` | <81 | Pinned conda dep |
+| `spades` | * | Pinned conda dep |
+| `skesa` | * | Pinned conda dep |
+| `megahit` | * | Pinned conda dep |
+| `flye` | * | Pinned conda dep |
+| `raven` | * | Pinned conda dep |
+| `canu` | * | Pinned conda dep |
+| `miniasm` | * | Pinned conda dep |
+| `racon` | * | Pinned conda dep |
+| `autocycler` | * | Pinned conda dep |
+| `dragonflye` | * | Pinned conda dep |
+| `unicycler` | * | Pinned conda dep |
+| `hybracter` | * | Pinned conda dep |
+| `medaka` | * | Pinned conda dep |
+| `nanopolish` | * | Pinned conda dep |
+| `polypolish` | * | Pinned conda dep |
+| `pypolca` | * | Pinned conda dep |
+| `bwa-mem2` | * | Pinned conda dep |
+| `minimap2` | * | Pinned conda dep |
+| `samtools` | * | Pinned conda dep |
+| `quast` | * | Pinned conda dep |
+| `checkm-genome` | * | Pinned conda dep |
+| `busco` | * | Pinned conda dep |
+| `kraken2` | * | Pinned conda dep |
+| `bakta` | * | Pinned conda dep |
+| `prokka` | * | Pinned conda dep |
+| `dfast` | * | Pinned conda dep |
+| `tbl2asn` | * | Pinned conda dep |
+
+Tool usage is grounded in the offline `docs-corpus/` snapshots (version-matched `--help`/`man` captures, upstream repo docs, and web docs as fallback) — the agent reads these instead of guessing flags.
+
+## 🔄 Update check
+
+Every skill built with [bioinfo-skill-creator](https://github.com/cheahhl814/bioinfo-skill-creator) ships a self-update check that compares the deployed git SHA against this upstream repo via `git fetch` — no GitHub API call, no extra dependencies.
+
+```bash
+pixi run update-check
 ```
-Import the skill from https://github.com/cheahhl814/bacterial-genome-analysis
-```
 
-The agent will respond to triggers such as *"assemble bacterial genome"*, *"complete bacterial assembly"*, *"annotate bacterial genome"*, or *"is my bacterial genome ready"* and execute the 4-phase workflow.
+| Verdict | Exit | Meaning |
+|:--------|:-----|:--------|
+| `UP-TO-DATE` | 0 | Local HEAD matches origin/HEAD |
+| `LOCAL-AHEAD` | 0 | Unpushed local commits; no action needed |
+| `BEHIND-BY-N` | 1 | Upstream is N commits ahead → re-pull/re-sync from this repo |
+| `OFFLINE` | 2 | `git fetch` failed; informational only |
+| `NO-ORIGIN` | 2 | No `origin` remote configured; informational only |
 
-### For Human Users
+## 📁 Repository layout
 
-1. **Read the Master `SKILL.md`** for the pipeline architecture, orchestrator routing, and glossary.
-2. **Navigate to the relevant sub-skill** based on your data type (short/long/hybrid).
-3. **Follow the "When to Use", "Why This Tool", and "Troubleshooting" sections** for decision support.
-4. **Use the Go/No-Go gates** as checkpoints to ensure quality at each phase.
-5. **Read `$RUN_DIR/report.md`** at the end of QC — it's the single document with all verdicts.
-
-## Agent Skills Standard compliance
-
-This skill follows the [Agent Skills standard](https://agentskills.io/specification):
-
-- ✅ **YAML frontmatter** on every `SKILL.md`: `name`, `description`, `version`, `updated`, `triggers`.
-- ✅ **Trigger phrases** in `description` — agents auto-load the skill on matching user prompts.
-- ✅ **Inputs/Outputs contract** at the top of every sub-skill (`§0`).
-- ✅ **Output contract** at the bottom of every sub-skill (what files it produces).
-- ✅ **What NOT to do** section in every sub-skill (anti-patterns).
-- ✅ **Signature library** (troubleshooting table) in every sub-skill that runs external tools.
-
-**Auto-discovered by** (project-local, scanned from `cwd` upward to the repo root):
-
-- ✅ **pi** — this is the tool writing this README. Scans `SKILL.md` after the project is marked trusted.
-- ✅ **OpenCode** — scans the skill directory and walks up.
-- ✅ **Codex** — scans the skill directory and walks up.
-- ❌ **Claude Code** — does not scan the conventional locations by default. If you also need Claude Code to see this skill, see [anthropics/claude-code#33733](https://github.com/anthropics/claude-code/issues/33733).
-
-To install globally for one user, copy or symlink the skill to your user-scope path:
-
-| Tool | User-scope path |
-|---|---|
-| pi | your agent's skills directory |
-| OpenCode | `~/.config/opencode/skills/` or `~/.agents/skills/` |
-| Codex | `~/.agents/skills/` |
-
-## File Structure
-
-```
+```text
 bacterial-genome-analysis/
-├── SKILL.md                              # Master orchestrator (§0 stage detection, §B handoff contract, glossary)
-├── README.md                              # This file (Public overview)
-├── pixi.toml                              # Conda/pixi environment declaration (29 tools)
-├── preflight/
-│   └── genome-input-preflight/SKILL.md  # Phase 0: validate inputs, compute evidence, write params.json + preflight.md
-├── assembly/
-│   ├── short-read-assembly/SKILL.md     # De Bruijn Graph paradigm; SPAdes/SKESA/MEGAHIT
-│   ├── long-read-assembly/SKILL.md      # OLC paradigm; Flye/Autocycler/Dragonflye
-│   └── hybrid-assembly/SKILL.md        # Hybrid paradigms; Unicycler/Dragonflye/Hybracter
-├── polishing/
-│   └── genome-polishing/SKILL.md        # Two-stage polishing (Long-read → Short-read)
-├── validation/
-│   └── assembly-qc/SKILL.md             # Three Pillars of QC + report.md verdict generator
-└── annotation/
-    └── genome-annotation/SKILL.md       # Bakta-centric annotation with UniRef database
+├── SKILL.md                 # Master orchestrator (router — start here)
+├── README.md                # This file
+├── pixi.toml                # Pinned tool environment (pixi install)
+├── docs-corpus/             # Offline snapshots of upstream tool docs
+│   └── setuptools/
+│   └── spades/
+│   └── skesa/
+│   └── megahit/
+│   └── flye/
+│   └── raven/
+│   └── canu/
+│   └── miniasm/
+│   └── racon/
+│   └── autocycler/
+│   └── dragonflye/
+│   └── unicycler/
+│   └── hybracter/
+│   └── medaka/
+│   └── nanopolish/
+│   └── polypolish/
+│   └── pypolca/
+│   └── bwa-mem2/
+│   └── minimap2/
+│   └── samtools/
+│   └── quast/
+│   └── checkm-genome/
+│   └── busco/
+│   └── kraken2/
+│   └── bakta/
+│   └── prokka/
+│   └── dfast/
+│   └── tbl2asn/
+├── annotation/            # Phase sub-skill
+├── assembly/            # Phase sub-skill
+├── polishing/            # Phase sub-skill
+├── preflight/            # Phase sub-skill
+├── runners/            # Phase sub-skill
+├── validation/            # Phase sub-skill
+├── bin/
+│   └── skill-update-check.py  # Self-update check (pixi run update-check)
+└── bin/
+    └── scaffold-render.py     # Reproducibility — re-render the skill from params.json
 ```
 
-## Why this design?
+## 🔒 Hard guarantees
 
-This is the agentic-skill pattern documented by `BettaMt-agents` (https://github.com/cheahhl814/BettaMt-agents). Key principles borrowed from there:
+- **Filesystem evidence chain** — every phase emits the artifact the next phase consumes; the boundary between phases is the filesystem, not agent memory.
+- **Docs-grounded tool usage** — tool flags come from `docs-corpus/`, never from the agent's memory.
+- **Explicit stop points** — ambiguous decisions are surfaced to you as *Evidence + Recommend + Options*, not auto-picked.
+- **Reproducible environments** — every tool is pinned in `pixi.toml` and resolved via pixi.
 
-1. **The agent reasons; the skill executes.** Sub-skills don't try to be smart — they have a single responsibility and produce specific files.
-2. **The filesystem is the boundary.** Inputs and outputs are explicit file paths, not agent memory.
-3. **The orchestrator is a router.** The master `SKILL.md` does not duplicate logic; it detects the stage and routes.
-4. **Confidence-labeled hypotheses.** Every signature-library row is "stderr pattern $\rightarrow$ likely cause $\rightarrow$ suggested fix" — the agent reads the actual error first, then matches.
+## 🚀 Nextflow runner
+
+For production / HPC / cohort runs, the skill ships a thin Nextflow DSL2 runner at `runners/nextflow-runner/` (nf-core-style resource labels, pinned containers, trace/report/timeline enabled).
+
+```bash
+# Stub smoke test (builds the DAG without executing)
+nextflow run runners/nextflow-runner/main.nf -profile test -stub-run
+
+# Real run
+nextflow run runners/nextflow-runner/main.nf --input <samplesheet.csv> --outdir <outdir> -profile docker
+```
+
+The bash recipes remain the source of truth; the runner is a thin executor.
+
+## Provenance
+
+Built with the [bioinfo-skill-creator](https://github.com/cheahhl814/bioinfo-skill-creator) meta-skill (v1.1.0), following the AiX-BIO skill convention (preflight → build → debug → battle-test evidence chain). Pattern adopted from:
+
+- **BettaMt-agents** — https://github.com/cheahhl814/BettaMt-agents
+- **bacterial-genome-analysis** — https://github.com/cheahhl814/bacterial-genome-analysis
+- **amr-gene-screening** — https://github.com/cheahhl814/amr-gene-screening
 
 ## License
 
-This skill's text and code are released under the MIT License.
+Released under the MIT License — see the license file in this repository for details.
