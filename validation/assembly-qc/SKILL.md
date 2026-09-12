@@ -1,8 +1,8 @@
 ---
 name: assembly-qc
 description: Quantify the quality, completeness, and contamination of a bacterial genome assembly AND write a pass/warn/fail report.md. This skill ensures that an assembly is "finished" enough for downstream annotation and comparative genomics using CheckM, QUAST, BUSCO, and Kraken2. Always run after polishing.
-version: 5
-updated: "2026-08-14"
+version: 5.1
+updated: "2026-09-12"
 triggers:
   - "validate assembly"
   - "check assembly quality"
@@ -46,6 +46,7 @@ This sub-skill **refuses to run** unless the upstream artifacts are present.
 | Path | Source | Required? |
 | --- | --- | --- |
 | `$RUN_DIR/assembly.fasta` | `polishing/genome-polishing` (or `assembly/*` for skip-polish) | yes |
+| `$RUN_DIR/draft_graph.gfa` | `assembly/hybrid-assembly` or `assembly/long-read-assembly` | no — graph check (§Phase 1.5) is skipped if absent (e.g. short-read-only or Autocycler runs) |
 
 ### Outputs (produced)
 | Path | Owner | Format | Notes |
@@ -55,6 +56,7 @@ This sub-skill **refuses to run** unless the upstream artifacts are present.
 | `$RUN_DIR/checkm_output/` | `CheckM` | TSV + tree | Completeness/contamination, archival. |
 | `$RUN_DIR/busco_output/` | `BUSCO` | TSV + plots | Evolutionary completeness, archival. |
 | `$RUN_DIR/kraken2_report.txt` | `Kraken2` | TSV | Contamination screen. |
+| `$RUN_DIR/draft_graph_info.txt`, `draft_graph.png` | `Bandage` | text + PNG | Graph-based circularity check; only produced when `draft_graph.gfa` exists. |
 
 ### Where to write
 - Use `$RUN_DIR` (env var) or the current working directory if `$RUN_DIR` is unset.
@@ -83,13 +85,14 @@ Assembly quality control (QC) prevents the use of fragmented or contaminated gen
   - `CheckM` (Lineage-based completeness/contamination).
   - `BUSCO` (Ortholog-based completeness).
   - `Kraken2` (Taxonomic contamination check).
+  - `Bandage` (Graph-based circularity check; optional, only used if an assembly graph was produced).
 
 ## Installation
 
 ```bash
 pixi project channel add conda-forge
 pixi project channel add bioconda
-pixi add quast checkm-genome busco kraken2
+pixi add quast checkm-genome busco kraken2 bandage
 ```
 
 ## Procedure
@@ -168,6 +171,18 @@ kraken2 --db "${KRAKEN2_DB_PATH:-$SKILL_ROOT/assets/kraken2_db}" \
 
 *DB reuse*: if `$KRAKEN2_DB_PATH` is unset, this defaults to `$SKILL_ROOT/assets/kraken2_db` — build or extract the DB there once (`kraken2-build --db "$SKILL_ROOT/assets/kraken2_db" ...`) and every future run reuses it without re-downloading.
 
+#### 5. Graph Topology (`Bandage`) — optional, if `draft_graph.gfa` exists
+
+QUAST/CheckM/BUSCO/Kraken2 all judge the assembly from the FASTA alone. `Bandage` checks the assembly *graph* instead, so it catches a class of error the others can't: an assembler-reported "circular" contig that still has dead ends in its own graph.
+
+```bash
+if [ -f "$RUN_DIR/draft_graph.gfa" ]; then
+  Bandage info "$RUN_DIR/draft_graph.gfa" > "$RUN_DIR/draft_graph_info.txt"
+  Bandage image "$RUN_DIR/draft_graph.gfa" "$RUN_DIR/draft_graph.png"
+fi
+```
+*Key metric (read from `draft_graph_info.txt`)*: **Dead ends** — `0` confirms every contig/plasmid is closed; `>0` means at least one is not, regardless of what the assembler log claimed. Both commands are headless (no X server / GUI required).
+
 ### Phase 2: Write `report.md`
 
 After all four tools complete, write `$RUN_DIR/report.md` from the **§Output contract template** below. **Never** skip this — the user wants a single document with verdicts, not four separate logs.
@@ -183,6 +198,7 @@ The verdict assignment per check:
 | **BUSCO complete** | $> 95\%$ | $80{-}95\%$ | $< 80\%$ |
 | **BUSCO fragmented** | $< 5\%$ | $5{-}10\%$ | $> 10\%$ |
 | **Kraken2 contamination** | $\le 5\%$ contigs off-genus | $5{-}10\%$ | $> 10\%$ (or any off-class) |
+| **Graph dead ends (Bandage)** | $0$ | n/a | $> 0$ (skip check entirely — not a WARN state — if no `.gfa` was produced) |
 
 **Overall verdict:**
 - **PASS**: all checks PASS.
@@ -214,6 +230,8 @@ The verdict assignment per check:
 | `kraken2: command not found` | pixi env missing `kraken2` | `pixi add kraken2`. |
 | `Killed` (any tool, exit 137) | OOM | Reduce `-t` (threads); for CheckM, see pixi.toml `setuptools<81` note. |
 | `Kraken2: database not found` | `KRAKEN2_DB_PATH` unset or path wrong | `export KRAKEN2_DB_PATH="$SKILL_ROOT/assets/kraken2_db"` (or another path). |
+| `Bandage: command not found` | pixi env missing `bandage` | `pixi add bandage`. |
+| `Bandage image` produces a blank/tiny PNG | Headless environment missing an OpenGL/X11 stub | Verified working via `xvfb-run -a Bandage image ...` if the bare command fails in CI/containers. |
 
 ## Output contract — `$RUN_DIR/report.md` template
 
@@ -240,6 +258,7 @@ Generated:  <ISO8601>
 | BUSCO fragmented       | ✅ / ⚠️ / ❌ | <X>% (target < 5%)                             |
 | BUSCO missing          | ✅ / ⚠️ / ❌ | <X>% (target < 5%)                             |
 | Kraken2 contamination  | ✅ / ⚠️ / ❌ | <X>% off-genus (target ≤ 5%)                   |
+| Graph dead ends (Bandage) | ✅ / ❌ / n/a | <N> dead ends (target 0; n/a if no .gfa)    |
 
 **Overall**: <PASS / PASS-WITH-WARNINGS / FAIL>
 
@@ -264,6 +283,12 @@ Generated:  <ISO8601>
 \`\`\`
 <top 10 rows of kraken2_report.txt, or note "no off-genus hits">
 \`\`\`
+
+### Graph topology (Bandage)
+\`\`\`
+<raw draft_graph_info.txt, or note "no draft_graph.gfa produced — check skipped">
+\`\`\`
+(see also `draft_graph.png` for a visual)
 
 ## Notes & recommended follow-ups
 - <bullet list of any warnings or failures, with concrete next steps>
