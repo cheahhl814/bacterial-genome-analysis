@@ -318,7 +318,7 @@ nextflow run main.nf -profile test --outdir test_results
   - [`mobilome-profiling`](https://github.com/cheahhl814/mobilome-profiling) — plasmids + prophages + IS (Phase 5c, standalone)
   - [`typing-and-pangenome`](https://github.com/cheahhl814/typing-and-pangenome) — MLST/cgMLST + pangenome (Phase 5d/e, standalone; ships its own Nextflow runner)
 - **Pattern**: [`BettaMt-agents`](https://github.com/cheahhl814/BettaMt-agents) — the `bettamt-preflight → bettamt-qc` pattern this skill adopts
-- **Nextflow style**: [`nextflow-pipelines`](https://github.com/cheahhl814/nextflow-pipelines) — DSL2 + nf-core convention reference
+- **Nextflow style**: [`nf-skill`](https://github.com/cheahhl814/nf-skill) — DSL2 + nf-core convention reference
 - **Reference pipeline**: [`nf-core/bacass`](https://github.com/nf-core/bacass) — the gold-standard Nextflow pipeline this runner mirrors
 
 ## References

@@ -16,7 +16,7 @@ triggers:
 
 # Meta-Skill: bacterial-genome-analysis
 
-> **v5.1.0 — Adds a Nextflow runner (opt-in).** A thin Nextflow DSL2 wrapper now lives at [`runners/nextflow-runner/`](https://github.com/cheahhl814/bacterial-genome-analysis/tree/master/runners/nextflow-runner) for production / HPC / cohort runs. Bash remains the default and the source of truth. The runner mirrors nf-core/bacass and the [`nextflow-pipelines`](https://github.com/cheahhl814/nextflow-pipelines) style guide. See **§0.4** for the bash-vs-Nextflow decision matrix.
+> **v5.1.0 — Adds a Nextflow runner (opt-in).** A thin Nextflow DSL2 wrapper now lives at [`runners/nextflow-runner/`](https://github.com/cheahhl814/bacterial-genome-analysis/tree/master/runners/nextflow-runner) for production / HPC / cohort runs. Bash remains the default and the source of truth. The runner mirrors nf-core/bacass and the [`nf-skill`](https://github.com/cheahhl814/nf-skill) style guide. See **§0.4** for the bash-vs-Nextflow decision matrix.
 >
 > **v5.0.2 redesign (predecessor).** Added the **Ask-User Stop Points** pattern, adopted from `Betta-WGS-agent` (betta-preflight's "validate with user or via command line inspection"). Every sub-skill with decision ambiguity now has explicit **SP1–SP19** stop points: each fires only when the evidence is ambiguous, each uses the **Evidence + Recommend + Options** format, and each lists the default (auto-pick) for the unambiguous case. The pipeline architecture is unchanged from v5.0.1 (Phase 0 Preflight + 4 phases).
 
@@ -137,7 +137,7 @@ For each phase, every sub-skill documents the exact `pixi run` commands. The orc
 2. Print the recommended command and ask for confirmation.
 3. After execution, write the relevant `report.md` and hand off to the next stage.
 
-For the Nextflow runner — see [`runners/nextflow-runner/SKILL.md`](https://github.com/cheahhl814/bacterial-genome-analysis/tree/master/runners/nextflow-runner). The runner mirrors nf-core/bacass and the [`nextflow-pipelines`](https://github.com/cheahhl814/nextflow-pipelines) style guide.
+For the Nextflow runner — see [`runners/nextflow-runner/SKILL.md`](https://github.com/cheahhl814/bacterial-genome-analysis/tree/master/runners/nextflow-runner). The runner mirrors nf-core/bacass and the [`nf-skill`](https://github.com/cheahhl814/nf-skill) style guide.
 
 ## A. Pipeline Architecture
 
