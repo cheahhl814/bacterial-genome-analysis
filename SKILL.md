@@ -1,8 +1,8 @@
 ---
 name: bacterial-genome-analysis
 description: End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome — or when they ask "is my bacterial genome ready?". Builds on the upstream read-qc-trimming skill. Pairs with the bettamt-style ask-user stop point pattern from Betta-WGS-agent.
-version: 5.1.0
-updated: "2026-08-16"
+version: 5.2.0
+updated: "2026-10-05"
 triggers:
   - "assemble bacterial genome"
   - "complete bacterial assembly"
@@ -352,3 +352,13 @@ For users unfamiliar with the terminology:
 After this orchestrator routes the user to a phase, the agent should explicitly state which sub-skill was invoked and what file it produces. Example:
 
 > I've handed off to `validation/assembly-qc`. It will run CheckM, QUAST, BUSCO, and Kraken2 against your polished FASTA, then write `report.md` to your run directory with pass/warn/fail verdicts. Say the word and I'll invoke it.
+
+## Dependencies → biodb-fetch (shared data lake)
+
+Consumes [biodb-fetch](https://github.com/cheahhl814/biodb-fetch) v1.0.0 (deployed at `~/.agents/skills/biodb-fetch/`) — this skill is its contract-validation consumer:
+
+- **Accession-mode inputs (new)**: when the user names NCBI accessions (GCA/GCF) for input genomes or related records instead of local files, route acquisition through biodb-fetch's `ncbi` domain (`pixi run python3 ~/.agents/skills/biodb-fetch/scripts/ncbi_datasets.py genome --accession <GCA/GCF> --out ./work/genome/`, or `ncbi_fetch.py` for individual records). biodb-fetch owns mirror/retry/rate-limit handling and md5 verification; this preflight then validates the manifest-located files as normal inputs (see `preflight/genome-input-preflight` — biodb-fetch note).
+- **Shared store**: payloads land in biodb-fetch's content-addressed `store/` with md5 `.sha256` sidecars; repeat requests return `cache=hit` — the same reference genome fetched by any consumer skill is reused across batches with zero re-download. `--refresh` re-pulls.
+- **Contract v2**: locate files ONLY via the emitted `manifest.tsv` (accession/source/url/path/md5/retrieval_date/tool/format/contract_version/cache); never parse biodb-fetch internals.
+- **Boundary — `assets/` stays tool-owned**: Bakta/Kraken2/BUSCO databases are populated by the tools themselves (`bakta_db download`, `kraken2-build`, BUSCO lazy lineage download) and remain this skill's per-skill assets cache (see `assets/README.md`). biodb-fetch does not manage tool-native DB downloads; it owns record/sequence retrieval. (biodb-fetch is the cross-skill generalization of this skill's own `assets/` pattern for record-level data.)
+- **Degradation**: biodb-fetch unavailable (not deployed / NO-GO / offline) → proceed exactly as before with user-supplied files; note the deviation in the preflight report.
