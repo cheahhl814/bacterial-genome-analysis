@@ -1,8 +1,8 @@
 ---
 name: genome-input-preflight
 description: Validate bacterial genome analysis inputs (cleaned reads) and write a preflight.md audit trail + params.json platform contract. Computes evidence (read stats, coverage, contamination, disk, resource budget) and emits a GO / GO-WITH-WARNINGS / NO-GO verdict. Always run after read-qc-trimming and before any assembly sub-skill. Has 7 explicit ask-user stop points (SP1–SP7) that fire only when evidence is ambiguous. Triggers: "preflight bacterial genome", "what params for bacterial assembly", "bacterial genome preflight", "validate my cleaned reads", "should I assemble these reads".
-version: 5.0.2
-updated: "2026-08-14"
+version: 5.0.3
+updated: "2026-10-05"
 triggers:
   - "preflight bacterial genome"
   - "what params for bacterial assembly"
@@ -72,6 +72,8 @@ This sub-skill has **8 stop points** (SP1–SP8). Each fires only when the evide
 | User provided a single FASTQ path | Cannot infer platform from filename alone | Ask: "I see one FASTQ at `<path>`. What platform produced it? (Illumina / ONT / PacBio HiFi / PacBio CLR)" |
 
 **Auto-pick when**: cleaned reads exist and filenames are clear (`cleaned_R1.fastq.gz` + `cleaned_R2.fastq.gz` → Illumina; `cleaned_long.fastq.gz` → ONT/PacBio).
+
+> **biodb-fetch note (v5.x consumer wiring)**: if the user instead names an NCBI accession (GCA/GCF) or a set of accession numbers rather than local reads, route acquisition through the [biodb-fetch](https://github.com/cheahhl814/biodb-fetch) dependency skill's `ncbi` domain (`pixi run python3 ~/.agents/skills/biodb-fetch/scripts/ncbi_datasets.py genome --accession <GCA/GCF> --out ./work/genome/`) — it returns md5-verified files with a `manifest.tsv` (contract v2) and reuses anything already in the shared `store/` (`cache=hit`). This preflight then validates the manifest-locatated files exactly as for user-supplied inputs. Tool-native reference databases (Bakta/Kraken2/BUSCO via `assets/`) are NOT affected — they stay tool-owned (see root SKILL.md §Dependencies).
 
 ### SP2 — Short AND long reads present (path choice)
 

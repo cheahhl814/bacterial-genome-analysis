@@ -1,0 +1,203 @@
+{
+  "skill_name": "bacterial-genome-analysis",
+  "skill_version": "5.1.0",
+  "skill_updated": "2026-08-16",
+  "skill_short_description": "End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome \u2014 or when they ask \"is my bacterial genome ready?\". Builds on the upstream read-qc-trimming skill. Pairs with the bettamt-style ask-user stop point pattern from Betta-WGS-agent.",
+  "skill_description": "End-to-end orchestration of bacterial genome reconstruction, from raw reads to a fully annotated, high-fidelity genomic sequence. This meta-skill integrates preflight (input validation), assembly, polishing, validation, and annotation into a strict evidence chain based on the nf-core/bacass paradigm. Use when the user wants to assemble, polish, validate, or annotate a bacterial genome \u2014 or when they ask \"is my bacterial genome ready?\". Builds on the upstream read-qc-trimming skill. Pairs with the bettamt-style ask-user stop point pattern from Betta-WGS-agent.",
+  "skill_triggers": [
+    "assemble bacterial genome",
+    "complete bacterial assembly",
+    "bacterial genome pipeline",
+    "de novo bacterial assembly",
+    "annotate bacterial genome",
+    "hybrid bacterial assembly",
+    "is my bacterial genome ready",
+    "bacterial genome QC report"
+  ],
+  "github_repo": "github.com/cheahhl814/bacterial-genome-analysis",
+  "sub_skills": [
+    {
+      "name": "annotation",
+      "purpose": "This skill serves two purposes:",
+      "artifact": "annotation-artifact.md"
+    },
+    {
+      "name": "assembly",
+      "purpose": "This skill serves two purposes:",
+      "artifact": "assembly-artifact.md"
+    },
+    {
+      "name": "polishing",
+      "purpose": "This skill serves two purposes:",
+      "artifact": "polishing-artifact.md"
+    },
+    {
+      "name": "preflight",
+      "purpose": "**v5.0.1.** New sub-skill. Mirrors the `bettamt-preflight` pattern from [BettaMt-agents](https://github.com/cheahhl814/B",
+      "artifact": "preflight.md"
+    },
+    {
+      "name": "runners",
+      "purpose": "This sub-skill ships a thin Nextflow DSL2 wrapper around the bash recipes in the parent `bacterial-genome-analysis` skil",
+      "artifact": "runners-artifact.md"
+    },
+    {
+      "name": "validation",
+      "purpose": "**v5 redesign.** This skill used to be just a recipe for running QC tools. It now also **generates a verdict** by writin",
+      "artifact": "validation-artifact.md"
+    }
+  ],
+  "tool_inventory": [
+    {
+      "name": "setuptools",
+      "version": "<81",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "spades",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "skesa",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "megahit",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "flye",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "raven",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "canu",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "miniasm",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "racon",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "autocycler",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "dragonflye",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "unicycler",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "hybracter",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "medaka",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "nanopolish",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "polypolish",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "pypolca",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "bwa-mem2",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "minimap2",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "samtools",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "quast",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "checkm-genome",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "busco",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "kraken2",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "bakta",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "prokka",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "dfast",
+      "version": "*",
+      "role": "Pinned conda dep"
+    },
+    {
+      "name": "tbl2asn",
+      "version": "*",
+      "role": "Pinned conda dep"
+    }
+  ],
+  "skill_title": "bacterial-genome-analysis",
+  "github_org": "cheahhl814",
+  "pixi_channels": [
+    "conda-forge",
+    "bioconda"
+  ],
+  "license": "MIT",
+  "target_tiers": [
+    "large"
+  ],
+  "with_nextflow_runner": true
+}

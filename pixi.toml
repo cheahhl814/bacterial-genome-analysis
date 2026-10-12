@@ -49,6 +49,8 @@ dfast = "*"
 tbl2asn = "*"
 
 [tasks]
+# See bin/skill-update-check.py for the verdict legend (UP-TO-DATE / BEHIND-BY-N / OFFLINE).
+update-check = "python3 bin/skill-update-check.py"
 # Common workflows as pixi tasks
 assembly-short = "echo 'Starting short-read assembly workflow...'"
 assembly-long = "echo 'Starting long-read assembly workflow...'"
